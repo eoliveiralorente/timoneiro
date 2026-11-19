@@ -195,7 +195,7 @@ canvas#world{position:absolute;inset:0;width:100%;height:100%;touch-action:none;
 .hero p{color:var(--mut);font-size:17px;line-height:1.35;margin-bottom:18px}
 .seg{display:flex;padding:5px;margin-bottom:12px}.seg button{flex:1;background:none;padding:10px;border-radius:10px;color:var(--mut);font-size:16px;letter-spacing:1px;text-transform:uppercase}.seg button.on{background:rgba(246,196,83,.15);color:var(--gold)}
 .form label{display:block;font-size:13px;letter-spacing:1px;text-transform:uppercase;color:var(--mut);margin-bottom:12px}
-.form input:not([type=checkbox]),.finput{display:block;width:100%;margin-top:6px;padding:13px 12px;border-radius:12px;border:1px solid var(--line);background:rgba(0,0,0,.35);color:#fff;font-family:inherit;font-size:17px;font-weight:600;outline:none}
+.form select,.form input:not([type=checkbox]),.finput{display:block;width:100%;margin-top:6px;padding:13px 12px;border-radius:12px;border:1px solid var(--line);background:rgba(0,0,0,.35);color:#fff;font-family:inherit;font-size:17px;font-weight:600;outline:none}
 .form input:focus,.finput:focus{border-color:var(--cy);box-shadow:0 0 0 3px rgba(63,224,255,.15)}
 .chk{display:flex!important;gap:10px;align-items:flex-start;text-transform:none!important;letter-spacing:0!important;font-size:15px!important;color:var(--txt)!important;line-height:1.35}
 .chk input{width:22px;height:22px;flex:none;margin-top:1px;accent-color:#f6c453}
@@ -214,6 +214,10 @@ canvas#world{position:absolute;inset:0;width:100%;height:100%;touch-action:none;
 .creator p{color:var(--mut);font-size:15px;line-height:1.35;margin-bottom:12px}
 .crlinks{display:flex;gap:8px}.crlinks .btn{flex:1;text-align:center;text-decoration:none;font-size:13px;letter-spacing:1px;padding:11px 4px;margin:0}
 .btn.share{margin-bottom:10px}
+.form label em.optl{font-style:normal;text-transform:none;letter-spacing:0;color:var(--mut);opacity:.8}
+select.finput,.form select{appearance:none;-webkit-appearance:none}
+select option{background:#0b1430;color:#fff}
+.notice{font-size:14px;line-height:1.4;color:var(--txt);background:rgba(63,224,255,.08);border:1px solid rgba(63,224,255,.35);border-radius:12px;padding:10px 12px;margin:-2px 0 14px}
 </style>
 </head>
 <body>
@@ -645,7 +649,8 @@ function daily(){const doneToday=st.daily===today(),avail=pool().length;
 // ---------- sessão ----------
 function pool(){const p=[];U.forEach((u,ui)=>['l','b'].forEach(k=>{if(st.done[ui+k])(k==='l'?u.l:u.b).it.forEach((it,ix)=>p.push({it,id:ui+k+'-'+ix}))}));return p}
 function mk(mode,items,extra){S=Object.assign({mode,queue:items.map(x=>Object.assign({},x)),total:items.length,ok:0,errs:{},anyErr:false,fb:null,input:'',sel:null,combo:0,maxCombo:0,bonus:0,fx:null},extra||{});prep();view='lesson';modal=null;renderModal();renderScreen();focusCmd()}
-function start(u,k){regen();sfx('click');if(st.budget<=0){view='empty';modal=null;renderModal();renderScreen();return}const src=k==='l'?U[u].l:U[u].b;mk(k==='l'?'lesson':'storm',src.it.map((it,ix)=>({it,id:u+k+'-'+ix})),{u,k,intro:k==='b'?src.intro:null,title:src.t})}
+function needsAccount(u,k){return API.online&&nodes.indexOf(u+k)>=2&&(!API.user||!API.user.phone)}
+function start(u,k){regen();sfx('click');if(needsAccount(u,k)){gateNext=[u,k];modal='gate';renderModal();return}if(st.budget<=0){view='empty';modal=null;renderModal();renderScreen();return}const src=k==='l'?U[u].l:U[u].b;mk(k==='l'?'lesson':'storm',src.it.map((it,ix)=>({it,id:u+k+'-'+ix})),{u,k,intro:k==='b'?src.intro:null,title:src.t})}
 function startDaily(){regen();if(st.budget<=0){view='empty';renderScreen();return}mk('daily',shuf(pool()).slice(0,3),{title:'Plantão do dia'})}
 function startReview(){const p=pool();const byMiss=p.filter(x=>st.miss[x.id]>0).sort((a,b)=>st.miss[b.id]-st.miss[a.id]);const items=(byMiss.length?byMiss:shuf(p)).slice(0,5);if(!items.length)return;mk('review',items,{title:'Postmortem'})}
 function prep(){const c=S.queue[0];if(c&&c.it.t==='q')c.order=shuf(c.it.o.map((t,i)=>({t,i})));S.sel=null;S.input='';S.fb=null}
@@ -732,6 +737,9 @@ function modalHtml(){
  if(modal==='node'&&selNode)return nodeSheet();
  if(modal==='quit')return `<div class="center-modal"><div class="glass"><div style="font-size:44px">🏳️</div><h3 style="font-size:22px">Abandonar a missão?</h3><p style="color:var(--mut)">O progresso desta etapa será perdido.</p><button class="btn cy" onclick="modal=null;renderModal();focusCmd()">Continuar lutando</button><button class="btn ghost" style="color:var(--rd)" onclick="go('home')">Abandonar</button></div></div>`;
  if(modal==='reset')return `<div class="center-modal"><div class="glass"><h3 style="font-size:22px">Zerar todo o progresso?</h3><p style="color:var(--mut)">XP, estrelas, patente e rota voltam ao início.</p><button class="btn rd" onclick="st=fresh();save();go('home')">Zerar</button><button class="btn ghost" onclick="modal=null;renderModal()">Cancelar</button></div></div>`;
+ if(modal==='gate'){if(API.user){const u=API.user;return `<div class="center-modal"><div class="glass form"><div style="font-size:44px">📱</div><h3 style="font-size:22px">Falta seu WhatsApp</h3><p style="color:var(--mut)">Para liberar as próximas ilhas, informe seu WhatsApp. Ele identifica sua conta e é usado para falar com você sobre seu acesso e seu progresso. Promoções só chegam se você marcar a opção abaixo.</p><input id="pf-phone" type="tel" inputmode="tel" class="finput" placeholder="(19) 99999-8888"><select id="pf-area" class="finput"><option value="">Sua área (opcional)</option>${(API.cfg.areas||[]).map(a=>`<option ${u.area===a?'selected':''}>${esc(a)}</option>`).join('')}</select><label class="chk" style="text-align:left"><input type="checkbox" id="pf-wa"><span>${esc(API.cfg.whatsappText||'')} <em>(opcional)</em></span></label><div id="pf-err" class="ferr" style="min-height:0"></div><button class="btn" onclick="saveGatePhone()">Liberar rota</button><button class="btn ghost" onclick="modal=null;gateNext=null;renderModal()">Agora não</button></div></div>`}
+  return `<div class="center-modal"><div class="glass"><div style="font-size:48px">🏝️</div><h3 style="font-size:24px">Amostra concluída!</h3><p style="color:var(--mut)">A Ilha 00 é grátis. Para navegar pelas outras 11 ilhas e enfrentar as tempestades, crie sua conta. Leva menos de um minuto e seu progresso vem junto.</p><button class="btn" onclick="modal=null;renderModal();authGate=true;authTab='new';view='auth';renderScreen()">Criar conta e continuar</button><button class="btn ghost" onclick="modal=null;renderModal();authGate=true;authTab='in';view='auth';renderScreen()">Já tenho conta</button><button class="linkbtn" style="color:var(--mut)" onclick="modal=null;gateNext=null;renderModal()">Voltar ao mapa</button></div></div>`}
+ if(modal==='profile'){const u=API.user||{};return `<div class="center-modal"><div class="glass form"><h3 style="font-size:22px">WhatsApp e área</h3><input id="pf-phone" type="tel" inputmode="tel" class="finput" placeholder="(19) 99999-8888" value="${esc(u.phone?fmtPhone(u.phone):'')}"><select id="pf-area" class="finput"><option value="">Sua área (opcional)</option>${(API.cfg.areas||[]).map(a=>`<option ${u.area===a?'selected':''}>${esc(a)}</option>`).join('')}</select><div id="pf-err" class="ferr" style="min-height:0"></div><button class="btn" onclick="saveProfile()">Salvar</button><button class="btn ghost" onclick="modal=null;renderModal()">Cancelar</button></div></div>`}
  if(modal==='pass')return `<div class="center-modal"><div class="glass"><h3 style="font-size:22px">Trocar senha</h3><input id="pw-cur" type="password" placeholder="Senha atual" class="finput" autocomplete="current-password"><input id="pw-new" type="password" placeholder="Nova senha (mín. 8)" class="finput" autocomplete="new-password"><div id="pw-err" class="ferr" style="min-height:0"></div><button class="btn" onclick="changePass()">Salvar</button><button class="btn ghost" onclick="modal=null;renderModal()">Cancelar</button></div></div>`;
  if(modal==='delete')return `<div class="center-modal"><div class="glass"><h3 style="font-size:22px">Excluir sua conta?</h3><p style="color:var(--mut)">Isso apaga seus dados e seu progresso do servidor de forma definitiva.</p><input id="del-pass" type="password" placeholder="Confirme sua senha" class="finput"><div id="del-err" class="ferr" style="min-height:0"></div><button class="btn rd" onclick="deleteAccount()">Excluir definitivamente</button><button class="btn ghost" onclick="modal=null;renderModal()">Cancelar</button></div></div>`;
  if(modal&&modal.startsWith('msg:'))return `<div class="center-modal"><div class="glass"><p>${esc(modal.slice(4))}</p><button class="btn" onclick="modal=null;renderModal()">OK</button></div></div>`;
@@ -759,45 +767,58 @@ async function boot(){
  if(API.online&&API.tok){try{const j=await api('GET','/api/me');API.user=j.user;if(!adoptState(j.state))syncSoon()}catch(e){}}
  renderScreen();
 }
-let authTab='new',authErr='',authBusy=false,authForm={name:'',email:'',password:''};
-function auth(){const c=API.cfg;return `<div class="page authp"><div class="hero" style="padding:20px 6px 6px"><div class="ic" style="font-size:54px">☸</div><h2>Bem-vindo a bordo</h2><p>Crie sua conta para salvar seu progresso em qualquer aparelho e subir no ranking da mentoria.</p></div>
+let gateNext=null,authGate=false;
+let authTab='new',authErr='',authBusy=false,authForm={name:'',email:'',password:'',phone:'',area:''};
+function auth(){const c=API.cfg;return `<div class="page authp"><div class="hero" style="padding:20px 6px 6px"><div class="ic" style="font-size:54px">☸</div><h2>${authGate?'Continue a rota':'Bem-vindo a bordo'}</h2><p>${authGate?'Você concluiu a amostra grátis. Crie sua conta para liberar as próximas ilhas e salvar seu progresso.':'Crie sua conta para salvar seu progresso em qualquer aparelho e subir no ranking da mentoria.'}</p></div>
  <div class="seg glass"><button class="${authTab==='new'?'on':''}" onclick="authTab='new';authErr='';renderScreen()">Criar conta</button><button class="${authTab==='in'?'on':''}" onclick="authTab='in';authErr='';renderScreen()">Entrar</button></div>
  <form class="panel glass form" onsubmit="event.preventDefault();doAuth()">
  ${authTab==='new'?`<label>Nome<input id="f-name" autocomplete="name" maxlength="80" required value="${esc(authForm.name)}"></label>`:''}
  <label>E-mail<input id="f-email" type="email" autocomplete="email" required value="${esc(authForm.email)}"></label>
  <label>Senha<input id="f-pass" type="password" autocomplete="${authTab==='new'?'new-password':'current-password'}" minlength="8" required placeholder="${authTab==='new'?'mínimo 8 caracteres':''}" value="${esc(authForm.password)}"></label>
+ ${authTab==='new'?`<label>WhatsApp <em class="optl">(obrigatório)</em><input id="f-phone" type="tel" inputmode="tel" autocomplete="tel" placeholder="(19) 99999-8888" value="${esc(authForm.phone||'')}"></label>
+ <div class="notice">📱 ${esc(c.phoneNotice||'O WhatsApp é obrigatório para criar sua conta.')}</div>
+ <label>Sua área <em class="optl">(opcional)</em><select id="f-area"><option value="">Selecione</option>${(c.areas||[]).map(a=>`<option ${authForm.area===a?'selected':''}>${esc(a)}</option>`).join('')}</select></label>`:''}
  ${authTab==='new'?`<label class="chk"><input type="checkbox" id="f-terms" ${authForm.terms?'checked':''}><span>Li e aceito os Termos de Uso e a <a href="/privacidade" target="_blank" rel="noopener">Política de Privacidade</a>. <em>(obrigatório)</em></span></label>
- <label class="chk"><input type="checkbox" id="f-mkt" ${authForm.marketing?'checked':''}><span>${esc(c.marketingText||'Quero receber novidades e ofertas por e-mail. Posso cancelar quando quiser.')} <em>(opcional)</em></span></label>`:''}
+ <label class="chk"><input type="checkbox" id="f-mkt" ${authForm.marketing?'checked':''}><span>${esc(c.marketingText||'Quero receber novidades e ofertas por e-mail. Posso cancelar quando quiser.')} <em>(opcional)</em></span></label>
+ <label class="chk"><input type="checkbox" id="f-wa" ${authForm.whatsapp?'checked':''}><span>${esc(c.whatsappText||'Quero receber contato pelo WhatsApp. Posso cancelar quando quiser.')} <em>(opcional)</em></span></label>`:''}
  ${authErr?`<div class="ferr">${esc(authErr)}</div>`:''}
  <button class="btn" type="submit" ${authBusy?'disabled':''}>${authBusy?'Aguarde…':authTab==='new'?'Criar conta e zarpar':'Entrar'}</button></form>
  <button class="btn ghost" onclick="playGuest()">Jogar como convidado</button>
  <p class="fine">Como convidado, o progresso fica salvo só neste aparelho.</p></div>`}
 async function doAuth(){const v=id=>{const e=document.getElementById(id);return e?e.value:''},ck=id=>{const e=document.getElementById(id);return !!(e&&e.checked)};
- authForm={name:v('f-name'),email:v('f-email'),password:v('f-pass'),terms:ck('f-terms'),marketing:ck('f-mkt')};
+ authForm={name:v('f-name'),email:v('f-email'),password:v('f-pass'),terms:ck('f-terms'),marketing:ck('f-mkt'),phone:v('f-phone'),area:v('f-area'),whatsapp:ck('f-wa')};
  authErr='';if(authTab==='new'&&!ck('f-terms')){authErr='Para criar a conta, aceite os Termos e a Política de Privacidade.';renderScreen();return}
- const form={name:v('f-name'),email:v('f-email'),password:v('f-pass'),terms:ck('f-terms'),marketing:ck('f-mkt')};
+ if(authTab==='new'&&authForm.phone.replace(/\D/g,'').length<10){authErr='Informe seu WhatsApp com DDD para criar a conta.';renderScreen();return}
+ const form={name:v('f-name'),email:v('f-email'),password:v('f-pass'),terms:ck('f-terms'),marketing:ck('f-mkt'),phone:v('f-phone'),area:v('f-area'),whatsapp:ck('f-wa')};
  authBusy=true;renderScreen();
  try{const j=authTab==='new'?await api('POST','/api/register',{...form,state:st}):await api('POST','/api/login',{email:form.email,password:form.password});
   setSession(j.token,j.user);if(authTab==='in'&&!adoptState(j.state))syncSoon();API.guest=false;try{localStorage.removeItem('timoneiro-guest')}catch(e){}
-  authBusy=false;authForm={name:'',email:'',password:''};sfx('win');view='home';renderScreen()}
+  authBusy=false;authForm={name:'',email:'',password:'',phone:'',area:''};sfx('win');authGate=false;view='home';renderScreen();if(gateNext&&API.user&&!API.user.phone){modal='gate';renderModal()}else if(gateNext){const g=gateNext;gateNext=null;setTimeout(()=>start(g[0],g[1]),400)}}
  catch(e){authBusy=false;authErr=e.message;sfx('bad');renderScreen()}}
-function playGuest(){API.guest=true;try{localStorage.setItem('timoneiro-guest','1')}catch(e){}view='home';renderScreen()}
+function playGuest(){API.guest=true;authGate=false;try{localStorage.setItem('timoneiro-guest','1')}catch(e){}view='home';renderScreen()}
 function accountPanel(){
  if(!API.online)return '';
  if(!API.user)return `<div class="panel glass"><h3>Sua conta</h3><p style="color:var(--mut);font-size:15px;margin-bottom:12px;line-height:1.35">Você está jogando como convidado. Crie uma conta para não perder seu progresso.</p><button class="btn" onclick="authTab='new';view='auth';renderScreen()">Criar conta / Entrar</button></div>`;
  const u=API.user;return `<div class="panel glass"><h3>Sua conta</h3>
  <div class="row"><span>${esc(u.name)}</span><span>${esc(u.email)}</span></div>
- <label class="chk" style="margin:12px 0"><input type="checkbox" ${u.marketing?'checked':''} onchange="setMkt(this.checked)"><span>${esc(API.cfg.marketingText||'Receber novidades e ofertas por e-mail')}</span></label>
+ <div class="row"><span>WhatsApp</span><span>${u.phone?esc(fmtPhone(u.phone)):'—'}</span></div>
+ <div class="row"><span>Área</span><span>${u.area?esc(u.area):'—'}</span></div>
+ <button class="linkbtn" style="color:var(--cy);margin:6px 0 4px" onclick="modal='profile';renderModal()">Editar WhatsApp e área</button>
+ <label class="chk" style="margin:12px 0"><input type="checkbox" ${u.marketing?'checked':''} onchange="setConsent('marketing',this.checked,this)"><span>${esc(API.cfg.marketingText||'Receber novidades e ofertas por e-mail')}</span></label>
+ <label class="chk" style="margin:0 0 12px"><input type="checkbox" ${u.whatsapp?'checked':''} onchange="setConsent('whatsapp',this.checked,this)"><span>${esc(API.cfg.whatsappText||'Receber contato pelo WhatsApp')}</span></label>
  <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn ghost" style="flex:1;font-size:14px;padding:11px" onclick="exportData()">Baixar meus dados</button><button class="btn ghost" style="flex:1;font-size:14px;padding:11px" onclick="logout()">Sair</button></div>
- <button class="linkbtn" style="color:var(--cy);margin-right:16px" onclick="modal='pass';renderModal()">Trocar senha</button><button class="linkbtn" onclick="modal='delete';renderModal()">Excluir minha conta</button></div>`}
+ ${u.isAdmin?'<a class="btn" style="margin:12px 0 4px;text-align:center;text-decoration:none" href="/admin">⚓ Painel do mentor</a>':''}<button class="linkbtn" style="color:var(--cy);margin-right:16px" onclick="modal='pass';renderModal()">Trocar senha</button><button class="linkbtn" onclick="modal='delete';renderModal()">Excluir minha conta</button></div>`}
 async function changePass(){const v=id=>(document.getElementById(id)||{}).value||'';try{const j=await api('PUT','/api/me/password',{current:v('pw-cur'),next:v('pw-new')});if(j.token)setSession(j.token,API.user);alertBox('Senha alterada.')}catch(e){const el=document.getElementById('pw-err');if(el)el.textContent=e.message}}
-async function setMkt(v){try{const j=await api('PUT','/api/me/consent',{marketing:v});API.user.marketing=j.marketing;sfx('click')}catch(e){alertBox(e.message)}}
+async function setConsent(kind,v,el){try{const j=await api('PUT','/api/me/consent',{[kind]:v});API.user=j.user;sfx('click')}catch(e){if(el)el.checked=!v;alertBox(e.message)}}
+function fmtPhone(p){const d=String(p).replace(/^55/,'');return d.length>=10?`(${d.slice(0,2)}) ${d.slice(2,d.length-4)}-${d.slice(-4)}`:p}
+async function saveGatePhone(){const v=id=>(document.getElementById(id)||{}).value||'';const wa=!!(document.getElementById('pf-wa')||{}).checked;try{let j=await api('PUT','/api/me/profile',{phone:v('pf-phone'),area:v('pf-area')});if(wa)j=await api('PUT','/api/me/consent',{whatsapp:true});API.user=j.user;modal=null;renderModal();sfx('ok');if(gateNext){const g=gateNext;gateNext=null;setTimeout(()=>start(g[0],g[1]),300)}}catch(e){const el=document.getElementById('pf-err');if(el)el.textContent=e.message}}
+async function saveProfile(){const v=id=>(document.getElementById(id)||{}).value||'';try{const j=await api('PUT','/api/me/profile',{phone:v('pf-phone'),area:v('pf-area')});API.user=j.user;modal=null;renderModal();renderScreen();sfx('ok')}catch(e){const el=document.getElementById('pf-err');if(el)el.textContent=e.message}}
 async function exportData(){try{const j=await api('GET','/api/me/export');const b=new Blob([JSON.stringify(j,null,2)],{type:'application/json'});const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download='meus-dados-timoneiro.json';document.body.appendChild(a);a.click();a.remove()}catch(e){alertBox(e.message)}}
 function logout(){setSession(null);API.guest=false;try{localStorage.removeItem('timoneiro-guest')}catch(e){}st=fresh();save();splashOn=true;view='home';renderScreen()}
 async function deleteAccount(){const pw=(document.getElementById('del-pass')||{}).value||'';try{await api('DELETE','/api/me',{password:pw});setSession(null);try{localStorage.removeItem(KEY)}catch(e){}st=fresh();modal=null;renderModal();splashOn=true;view='home';renderScreen()}catch(e){const el=document.getElementById('del-err');if(el)el.textContent=e.message}}
 function alertBox(msg){modal='msg:'+msg;renderModal()}
 function offers(){if(!S||!S.result)return '';const c=API.cfg,out=[];
- if(API.online&&!API.user&&st.runs>=1)out.push(`<div class="offer glass"><b>💾 Não perca sua rota</b><span>Crie uma conta grátis e continue de qualquer aparelho.</span><button class="btn cy" onclick="authTab='new';view='auth';renderScreen()">Criar conta</button></div>`);
+ if(API.online&&!API.user&&st.runs>=1)out.push(`<div class="offer glass"><b>${st.done['0b']?'🏝️ Amostra concluída!':'💾 Não perca sua rota'}</b><span>${st.done['0b']?'Crie sua conta para liberar as próximas 11 ilhas.':'A partir da Ilha 01 você vai precisar de uma conta. Crie agora e seu progresso vem junto.'}</span><button class="btn cy" onclick="authGate=true;authTab='new';view='auth';renderScreen()">Criar conta</button></div>`);
  st.offers=st.offers||{};
  if(c.mentoriaUrl&&st.done['4b']&&!st.offers.mentoria){st.offers.mentoria=1;save();out.push(`<div class="offer glass"><b>⚓ Pronto para o cluster de verdade?</b><span>Na mentoria você pratica tudo isso num Kubernetes real, comigo.</span><a class="btn" href="${esc(c.mentoriaUrl)}" target="_blank" rel="noopener">Conhecer a mentoria</a></div>`)}
  if(c.lojaUrl&&S.result.promo&&!st.offers['rank'+S.result.promo[1]]){st.offers['rank'+S.result.promo[1]]=1;save();out.push(`<div class="offer glass"><b>👕 Camiseta ${esc(S.result.promo[1])}</b><span>Você conquistou a patente. Que tal vestir ela?</span><a class="btn" href="${esc(c.lojaUrl)}" target="_blank" rel="noopener">Ver na loja</a></div>`)}

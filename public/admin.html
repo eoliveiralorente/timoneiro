@@ -42,38 +42,48 @@ td small{display:block;color:var(--mut)}
 <p class="sub" style="margin-top:24px">Timoneiro · criado por Eduardo Lorente de Oliveira</p>
 </div>
 <script>
-let TOKEN='';try{TOKEN=sessionStorage.getItem('tim-admin')||''}catch(e){}
-let DATA=null,filter='todos',search='';
+let TOKEN='',MODE='Admin',ME=null;
+try{const t=sessionStorage.getItem('tim-admin');if(t){const o=JSON.parse(t);TOKEN=o.t;MODE=o.m}}catch(e){}
+try{if(!TOKEN){const g=localStorage.getItem('timoneiro-token');if(g){TOKEN=g;MODE='Bearer'}}}catch(e){}
+const AUTH=()=>MODE+' '+TOKEN;
+let DATA=null,filter='todos',search='',area='';
 const esc=s=>String(s??'').replace(/[&<>"]/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m]));
 const fmt=t=>t?new Date(t).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',year:'2-digit',hour:'2-digit',minute:'2-digit'}):'—';
 const days=t=>Math.floor((Date.now()-t)/864e5);
-async function call(path){const r=await fetch(path,{headers:{Authorization:'Admin '+TOKEN}});if(!r.ok){let j={};try{j=await r.json()}catch(e){}throw new Error(j.error||'Erro '+r.status)}return r}
-function login(err){document.getElementById('root').innerHTML=`<form class="card" style="max-width:420px" onsubmit="event.preventDefault();TOKEN=document.getElementById('t').value.trim();load()"><p style="margin-bottom:10px">Informe o token de mentor (ADMIN_TOKEN):</p><input id="t" type="password" style="width:100%;margin-bottom:10px" autocomplete="off"><button style="width:100%">Entrar</button>${err?`<div class="err">${esc(err)}</div>`:''}</form>`}
-async function load(){try{const r=await call('/api/admin/students');DATA=await r.json();try{sessionStorage.setItem('tim-admin',TOKEN)}catch(e){}render()}catch(e){try{sessionStorage.removeItem('tim-admin')}catch(_){}login(e.message)}}
+async function call(path){const r=await fetch(path,{headers:{Authorization:AUTH()}});if(!r.ok){let j={};try{j=await r.json()}catch(e){}throw new Error(j.error||'Erro '+r.status)}return r}
+function login(err){document.getElementById('root').innerHTML=`<form class="card" style="max-width:420px" onsubmit="event.preventDefault();loginEmail()"><p style="margin-bottom:10px">Entre com sua conta de administrador:</p><input id="le" type="email" placeholder="E-mail" style="width:100%;margin-bottom:10px" autocomplete="email"><input id="lp" type="password" placeholder="Senha" style="width:100%;margin-bottom:10px" autocomplete="current-password"><button style="width:100%">Entrar</button>${err?`<div class="err">${esc(err)}</div>`:''}
+<details style="margin-top:14px;color:var(--mut);font-size:13px"><summary style="cursor:pointer">Entrar com o token de emergência</summary><input id="t" type="password" placeholder="ADMIN_TOKEN" style="width:100%;margin:10px 0" autocomplete="off"><button type="button" class="ghost" style="width:100%" onclick="TOKEN=document.getElementById('t').value.trim();MODE='Admin';load()">Entrar com token</button></details></form>`}
+async function loginEmail(){const email=document.getElementById('le').value.trim(),password=document.getElementById('lp').value;try{const r=await fetch('/api/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email,password})});const j=await r.json();if(!r.ok)throw new Error(j.error||'Falha no login');if(!j.user.isAdmin)throw new Error('Esta conta não tem acesso de administrador.');TOKEN=j.token;MODE='Bearer';load()}catch(e){login(e.message)}}
+async function load(){try{const r=await call('/api/admin/students');DATA=await r.json();try{sessionStorage.setItem('tim-admin',JSON.stringify({t:TOKEN,m:MODE}))}catch(e){}render()}catch(e){try{sessionStorage.removeItem('tim-admin')}catch(_){}const fromGame=MODE==='Bearer'&&!document.getElementById('le');TOKEN='';MODE='Admin';login(fromGame?'':e.message)}}
 function rows(){let a=DATA.alunos;
  if(filter==='risco')a=a.filter(x=>days(x.ultimoAcesso)>=5&&x.proxima!=='Rota completa');
  if(filter==='engajados')a=a.filter(x=>x.uptime>=3||days(x.ultimoAcesso)<2&&x.etapas>=4);
  if(filter==='marketing')a=a.filter(x=>x.aceitaMarketing);
+ if(filter==='whatsapp')a=a.filter(x=>x.aceitaWhatsapp);
+ if(area)a=a.filter(x=>x.area===area);
  if(filter==='completos')a=a.filter(x=>x.proxima==='Rota completa');
- if(search){const s=search.toLowerCase();a=a.filter(x=>x.nome.toLowerCase().includes(s)||x.email.toLowerCase().includes(s))}return a}
-function render(){const A=DATA.alunos,ativos=A.filter(x=>days(x.ultimoAcesso)<7).length,mkt=A.filter(x=>x.aceitaMarketing).length,fim=A.filter(x=>x.proxima==='Rota completa').length,risco=A.filter(x=>days(x.ultimoAcesso)>=5&&x.proxima!=='Rota completa').length;
+ if(search){const s=search.toLowerCase();a=a.filter(x=>x.nome.toLowerCase().includes(s)||x.email.toLowerCase().includes(s)||(x.telefone||'').includes(s.replace(/\D/g,'')||'#'))}return a}
+function render(){const A=DATA.alunos,ativos=A.filter(x=>days(x.ultimoAcesso)<7).length,mkt=A.filter(x=>x.aceitaMarketing).length,wa=A.filter(x=>x.aceitaWhatsapp).length,fim=A.filter(x=>x.proxima==='Rota completa').length,risco=A.filter(x=>days(x.ultimoAcesso)>=5&&x.proxima!=='Rota completa').length;
  const list=rows();
  document.getElementById('root').innerHTML=`
- <div class="kpis"><div class="card kpi"><small>Alunos</small><b>${A.length}</b></div><div class="card kpi"><small>Ativos (7 dias)</small><b style="color:var(--cy)">${ativos}</b></div><div class="card kpi"><small>Em risco</small><b style="color:var(--rd)">${risco}</b></div><div class="card kpi"><small>Aceitam ofertas</small><b style="color:var(--gold)">${mkt}</b></div><div class="card kpi"><small>Rota completa</small><b style="color:var(--gr)">${fim}</b></div></div>
+ <div class="kpis"><div class="card kpi"><small>Alunos</small><b>${A.length}</b></div><div class="card kpi"><small>Ativos (7 dias)</small><b style="color:var(--cy)">${ativos}</b></div><div class="card kpi"><small>Em risco</small><b style="color:var(--rd)">${risco}</b></div><div class="card kpi"><small>Aceitam e-mail</small><b style="color:var(--gold)">${mkt}</b></div><div class="card kpi"><small>Aceitam WhatsApp</small><b style="color:var(--gr)">${wa}</b></div><div class="card kpi"><small>Rota completa</small><b style="color:var(--gr)">${fim}</b></div></div>
  <div class="card">
- <div class="bar"><input placeholder="Buscar nome ou e-mail" value="${esc(search)}" oninput="search=this.value;render();this.focus();this.setSelectionRange(this.value.length,this.value.length)"><button onclick="exportCsv()">⬇ Exportar leads (CSV)</button><button class="ghost" onclick="load()">↻</button><button class="ghost" onclick="TOKEN='';try{sessionStorage.removeItem('tim-admin')}catch(e){};login()">Sair</button></div>
- <div class="bar chips">${[['todos','Todos'],['risco','Em risco (5+ dias parado)'],['engajados','Engajados'],['marketing','Aceitam ofertas'],['completos','Rota completa']].map(([k,l])=>`<button class="${filter===k?'on':''}" onclick="filter='${k}';render()">${l}</button>`).join('')}</div>
- <table><thead><tr><th>Aluno</th><th>Progresso</th><th>XP / ★</th><th>Uptime</th><th>Último acesso</th><th>Ofertas</th><th></th></tr></thead><tbody>
- ${list.map(x=>{const d=days(x.ultimoAcesso);return `<tr><td><b>${esc(x.nome)}</b><small>${esc(x.email)}</small></td>
+ <div class="bar"><input placeholder="Buscar nome ou e-mail" value="${esc(search)}" oninput="search=this.value;render();this.focus();this.setSelectionRange(this.value.length,this.value.length)"><button onclick="exportCsv('leads.csv','leads-email-timoneiro.csv')">⬇ Leads e-mail</button><button onclick="exportCsv('whatsapp.csv','leads-whatsapp-timoneiro.csv')">⬇ Leads WhatsApp</button><button class="ghost" onclick="load()">↻</button><button class="ghost" onclick="TOKEN='';MODE='Admin';try{sessionStorage.removeItem('tim-admin')}catch(e){};login()">Sair</button></div>
+ <div class="bar chips">${[['todos','Todos'],['risco','Em risco (5+ dias parado)'],['engajados','Engajados'],['marketing','Aceitam e-mail'],['whatsapp','Aceitam WhatsApp'],['completos','Rota completa']].map(([k,l])=>`<button class="${filter===k?'on':''}" onclick="filter='${k}';render()">${l}</button>`).join('')}<select onchange="area=this.value;render()"><option value="">Todas as áreas</option>${[...new Set(A.map(x=>x.area).filter(Boolean))].sort().map(a=>`<option ${area===a?'selected':''}>${esc(a)}</option>`).join('')}</select></div>
+ <table><thead><tr><th>Aluno</th><th>Área</th><th>Progresso</th><th>XP / ★</th><th>Uptime</th><th>Último acesso</th><th>Ofertas</th><th></th></tr></thead><tbody>
+ ${list.map(x=>{const d=days(x.ultimoAcesso);return `<tr><td><b>${esc(x.nome)}</b><small>${esc(x.email)}</small>${x.telefone?`<small>${esc(fmtPhone(x.telefone))}</small>`:''}</td><td>${x.area?esc(x.area):'<span class="no">—</span>'}</td>
  <td>${esc(x.proxima)}<small>${x.etapas}/24 etapas</small><div class="prog"><i style="width:${Math.round(x.etapas/24*100)}%"></i></div></td>
  <td>${x.xp} XP<small>★ ${x.estrelas}</small></td><td>${x.uptime}d<small>recorde ${x.melhorUptime}d</small></td>
  <td>${fmt(x.ultimoAcesso)}<small>${d===0?'hoje':d===1?'ontem':d+' dias atrás'}</small>${d>=5&&x.proxima!=='Rota completa'?' <span class="tag warn">em risco</span>':''}</td>
- <td>${x.aceitaMarketing?'<span class="tag ok">aceita</span>':'<span class="tag no">não</span>'}</td>
- <td><button class="ghost mini" onclick="resetPass(${x.id},'${esc(x.email)}')">Nova senha</button></td></tr>`}).join('')||'<tr><td colspan="7" style="color:var(--mut)">Nenhum aluno neste filtro.</td></tr>'}
+ <td>${x.aceitaMarketing?'<span class="tag ok">e-mail</span> ':''}${x.aceitaWhatsapp?'<span class="tag ok">whatsapp</span>':''}${!x.aceitaMarketing&&!x.aceitaWhatsapp?'<span class="tag no">não</span>':''}</td>
+ <td>${x.aceitaWhatsapp?`<button class="mini" style="margin-bottom:6px" onclick="openWa('${x.telefone}','${esc(x.nome).replace(/'/g,'')}')">WhatsApp</button> <button class="ghost mini" style="margin-bottom:6px" onclick="optout(${x.id},'whatsapp')">Parar WhatsApp</button><br>`:''}<button class="ghost mini" onclick="resetPass(${x.id},'${esc(x.email)}')">Nova senha</button></td></tr>`}).join('')||'<tr><td colspan="8" style="color:var(--mut)">Nenhum aluno neste filtro.</td></tr>'}
  </tbody></table></div>
- <p class="sub" style="margin-top:12px">O CSV traz só quem marcou o aceite de ofertas, já com o link de descadastro de cada pessoa. Use esse link no rodapé dos e-mails.</p>`}
-async function exportCsv(){try{const r=await call('/api/admin/leads.csv');const b=await r.blob();const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download='leads-timoneiro.csv';document.body.appendChild(a);a.click();a.remove()}catch(e){alert(e.message)}}
-async function resetPass(id,email){if(!confirm('Gerar uma senha temporária para '+email+'?'))return;try{const r=await fetch('/api/admin/students/'+id+'/reset-password',{method:'POST',headers:{Authorization:'Admin '+TOKEN}});const j=await r.json();if(!r.ok)throw new Error(j.error);prompt('Senha temporária. Envie ao aluno e peça para trocar em Carreira → Sua conta → Trocar senha:',j.senhaTemporaria)}catch(e){alert(e.message)}}
+ <p class="sub" style="margin-top:12px">Cada CSV traz só quem deu aquele aceite: o de e-mail já vem com o link de descadastro de cada pessoa, e o de WhatsApp com o link wa.me. Se alguém pedir para parar no WhatsApp, use o botão "Parar WhatsApp" na linha do aluno: o pedido fica registrado.</p>`}
+function fmtPhone(p){const d=String(p).replace(/^55/,'');return d.length>=10?`(${d.slice(0,2)}) ${d.slice(2,d.length-4)}-${d.slice(-4)}`:p}
+function openWa(tel,nome){const first=String(nome).split(' ')[0];const msg=`Oi ${first}, tudo bem? Aqui é o Eduardo, criador do Timoneiro. Vi que você está navegando pelo jogo e queria saber como está sendo a experiência!`;window.open(`https://wa.me/${tel}?text=${encodeURIComponent(msg)}`,'_blank','noopener')}
+async function optout(id,canal){if(!confirm('Registrar que este aluno pediu para não receber mais contato por '+(canal==='email'?'e-mail':'WhatsApp')+'?'))return;try{const r=await fetch('/api/admin/students/'+id+'/optout',{method:'POST',headers:{Authorization:AUTH(),'Content-Type':'application/json'},body:JSON.stringify({canal})});if(!r.ok)throw new Error((await r.json()).error);load()}catch(e){alert(e.message)}}
+async function exportCsv(path,fname){try{const r=await call('/api/admin/'+path);const b=await r.blob();const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download=fname;document.body.appendChild(a);a.click();a.remove()}catch(e){alert(e.message)}}
+async function resetPass(id,email){if(!confirm('Gerar uma senha temporária para '+email+'?'))return;try{const r=await fetch('/api/admin/students/'+id+'/reset-password',{method:'POST',headers:{Authorization:AUTH()}});const j=await r.json();if(!r.ok)throw new Error(j.error);prompt('Senha temporária. Envie ao aluno e peça para trocar em Carreira → Sua conta → Trocar senha:',j.senhaTemporaria)}catch(e){alert(e.message)}}
 TOKEN?load():login();
 </script>
 </body>

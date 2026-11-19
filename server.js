@@ -10,6 +10,8 @@ const PORT = +process.env.PORT || 8080;
 const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, 'data');
 const APP_SECRET = process.env.APP_SECRET || '';
 const ADMIN_TOKEN = process.env.ADMIN_TOKEN || '';
+// E-mails de contas que também são administradoras (separados por vírgula)
+const ADMIN_EMAILS = String(process.env.ADMIN_EMAILS || '').split(',').map((e) => e.trim().toLowerCase()).filter(Boolean);
 const PUBLIC_URL = (process.env.PUBLIC_URL || '').replace(/\/$/, '');
 const CONFIG = {
   mentoriaUrl: process.env.MENTORIA_URL || '',
@@ -19,6 +21,9 @@ const CONFIG = {
 // Versão e texto exatos dos consentimentos (guardados no log a cada aceite)
 const TERMS_VERSION = process.env.TERMS_VERSION || '2026-11-16';
 const TERMS_TEXT = 'Li e aceito os Termos de Uso e a Política de Privacidade.';
+const WA_TEXT = 'Quero receber no WhatsApp o plantão do dia, novidades da mentoria e lançamentos das camisetas. Posso cancelar quando quiser.';
+const PHONE_NOTICE = 'O WhatsApp é obrigatório para criar sua conta. Ele identifica sua conta e é usado para falar com você sobre seu acesso e seu progresso no Timoneiro. Promoções só chegam se você marcar a opção de ofertas.';
+const AREAS = ['SRE', 'DevOps', 'AIOps / MLOps', 'Platform Engineering', 'Cloud', 'Desenvolvimento', 'QA / Testes', 'Segurança', 'Dados', 'PO / PM', 'Agile / Scrum', 'Infra / Suporte', 'Estudante', 'Outra'];
 const MKT_TEXT = 'Quero receber por e-mail novidades, conteúdos e ofertas da mentoria e da loja (como camisetas). Posso cancelar quando quiser.';
 
 if (APP_SECRET.length < 32 || ADMIN_TOKEN.length < 24) {
@@ -56,6 +61,12 @@ CREATE TABLE IF NOT EXISTS consent_log(
 );
 CREATE INDEX IF NOT EXISTS ix_consent_user ON consent_log(user_id);
 `);
+{ // migração: novas colunas sem perder dados
+  const cols = db.prepare('PRAGMA table_info(users)').all().map((c) => c.name);
+  if (!cols.includes('phone')) db.exec('ALTER TABLE users ADD COLUMN phone TEXT');
+  if (!cols.includes('whatsapp')) db.exec('ALTER TABLE users ADD COLUMN whatsapp INTEGER NOT NULL DEFAULT 0');
+  if (!cols.includes('area')) db.exec('ALTER TABLE users ADD COLUMN area TEXT');
+}
 const q = {
   byEmail: db.prepare('SELECT * FROM users WHERE email=?'),
   byId: db.prepare('SELECT * FROM users WHERE id=?'),
@@ -64,11 +75,13 @@ const q = {
   seen: db.prepare('UPDATE users SET last_seen=? WHERE id=?'),
   setState: db.prepare('UPDATE users SET state=?, state_updated=?, last_seen=? WHERE id=?'),
   setMkt: db.prepare('UPDATE users SET marketing=? WHERE id=?'),
+  setWa: db.prepare('UPDATE users SET whatsapp=? WHERE id=?'),
+  setProfile: db.prepare('UPDATE users SET phone=?, area=? WHERE id=?'),
   setPass: db.prepare('UPDATE users SET pass_hash=? WHERE id=?'),
   del: db.prepare('DELETE FROM users WHERE id=?'),
   log: db.prepare('INSERT INTO consent_log(user_id,kind,granted,text_version,text,ip,ua,at) VALUES(?,?,?,?,?,?,?,?)'),
   logsOf: db.prepare('SELECT kind,granted,text_version,text,ip,at FROM consent_log WHERE user_id=? ORDER BY at'),
-  all: db.prepare('SELECT id,name,email,created_at,last_seen,marketing,state,state_updated FROM users ORDER BY last_seen DESC'),
+  all: db.prepare('SELECT id,name,email,phone,area,whatsapp,created_at,last_seen,marketing,state,state_updated FROM users ORDER BY last_seen DESC'),
   leads: db.prepare('SELECT name,email,created_at FROM users WHERE marketing=1 ORDER BY created_at'),
 };
 
@@ -139,9 +152,24 @@ function authUser(req) {
   const u = q.byId.get(p.uid);
   return u && p.pv === u.pass_hash.slice(-10) ? u : null;
 }
-const isAdmin = (req) => { const h = String(req.headers.authorization || ''); return h.startsWith('Admin ') && safeEq(h.slice(6), ADMIN_TOKEN); };
+const isAdminUser = (u) => !!u && ADMIN_EMAILS.includes(String(u.email).toLowerCase());
+const isAdmin = (req) => {
+  const h = String(req.headers.authorization || '');
+  if (h.startsWith('Admin ')) return safeEq(h.slice(6), ADMIN_TOKEN);
+  if (h.startsWith('Bearer ')) return isAdminUser(authUser(req));
+  return false;
+};
 const EMAIL_RE = /^[^\s@]{1,64}@[^\s@]{1,190}\.[^\s@]{2,}$/;
-const publicUser = (u) => ({ id: u.id, name: u.name, email: u.email, marketing: !!u.marketing, createdAt: u.created_at });
+const publicUser = (u) => ({ id: u.id, name: u.name, email: u.email, phone: u.phone || '', area: u.area || '', marketing: !!u.marketing, whatsapp: !!u.whatsapp, isAdmin: isAdminUser(u), createdAt: u.created_at });
+// Telefone BR: guarda só dígitos com DDI 55 (ex.: 5519999998888). Vazio = sem telefone.
+function normPhone(v) {
+  let d = String(v || '').replace(/\D/g, '');
+  if (!d) return '';
+  if (d.startsWith('00')) d = d.slice(2);
+  if ((d.length === 10 || d.length === 11) && !d.startsWith('55')) d = '55' + d;
+  return /^55\d{10,11}$/.test(d) ? d : null;
+}
+const normArea = (v) => (AREAS.includes(String(v || '')) ? String(v) : '');
 const newToken = (u) => sign({ uid: u.id, pv: u.pass_hash.slice(-10), exp: Date.now() + 30 * 864e5 });
 function summary(stateJson) {
   let s = {}; try { s = JSON.parse(stateJson || '{}') || {}; } catch {}
@@ -178,7 +206,7 @@ async function route(req, res) {
 
   if (m === 'GET' && STATIC[p]) return serveStatic(res, STATIC[p]);
   if (m === 'GET' && p === '/healthz') return send(res, 200, { ok: true });
-  if (m === 'GET' && p === '/api/config') return send(res, 200, { ...CONFIG, termsVersion: TERMS_VERSION, termsText: TERMS_TEXT, marketingText: MKT_TEXT });
+  if (m === 'GET' && p === '/api/config') return send(res, 200, { ...CONFIG, termsVersion: TERMS_VERSION, termsText: TERMS_TEXT, marketingText: MKT_TEXT, whatsappText: WA_TEXT, phoneNotice: PHONE_NOTICE, areas: AREAS });
 
   if (m === 'POST' && p === '/api/register') {
     if (limited(ip, 'reg', 10)) return fail(res, 429, 'Muitas tentativas. Tente mais tarde.');
@@ -188,12 +216,17 @@ async function route(req, res) {
     if (!EMAIL_RE.test(email)) return fail(res, 400, 'E-mail inválido.');
     if (pw.length < 8 || pw.length > 200) return fail(res, 400, 'A senha precisa ter pelo menos 8 caracteres.');
     if (b.terms !== true) return fail(res, 400, 'É preciso aceitar os Termos e a Política de Privacidade.');
+    const phone = normPhone(b.phone), area = normArea(b.area), wa = b.whatsapp === true ? 1 : 0;
+    if (phone === null) return fail(res, 400, 'Telefone inválido. Use DDD + número, ex.: (19) 99999-8888.');
+    if (!phone) return fail(res, 400, 'Informe seu WhatsApp com DDD para criar a conta.');
     if (q.byEmail.get(email)) return fail(res, 409, 'Este e-mail já tem conta. Use "Entrar".');
     const now = Date.now(), mkt = b.marketing === true ? 1 : 0;
     const r = q.insert.run(name, email, hashPass(pw), now, now, mkt, TERMS_VERSION, crypto.randomBytes(18).toString('base64url'));
     const uid = Number(r.lastInsertRowid);
     q.log.run(uid, 'terms', 1, TERMS_VERSION, TERMS_TEXT, ip, ua(req), now);
     q.log.run(uid, 'marketing', mkt, TERMS_VERSION, MKT_TEXT, ip, ua(req), now);
+    q.setProfile.run(phone || null, area || null, uid); q.setWa.run(wa, uid);
+    q.log.run(uid, 'whatsapp', wa, TERMS_VERSION, WA_TEXT, ip, ua(req), now);
     if (b.state && typeof b.state === 'object') { const js = JSON.stringify(b.state); if (js.length < 60000) q.setState.run(js, now, now, uid); }
     const u = q.byId.get(uid);
     return send(res, 201, { token: newToken(u), user: publicUser(u), state: u.state ? JSON.parse(u.state) : null, stateUpdated: u.state_updated });
@@ -228,9 +261,19 @@ async function route(req, res) {
       const now = Date.now(); q.setState.run(js, now, now, u.id); return send(res, 200, { ok: true, stateUpdated: now });
     }
     if (m === 'PUT' && p === '/api/me/consent') {
-      const b = await readJson(req); const v = b.marketing === true ? 1 : 0;
-      if (v !== u.marketing) { q.setMkt.run(v, u.id); q.log.run(u.id, 'marketing', v, TERMS_VERSION, MKT_TEXT, ip, ua(req), Date.now()); }
-      return send(res, 200, { ok: true, marketing: !!v });
+      const b = await readJson(req);
+      if (typeof b.marketing === 'boolean') { const v = b.marketing ? 1 : 0; if (v !== u.marketing) { q.setMkt.run(v, u.id); q.log.run(u.id, 'marketing', v, TERMS_VERSION, MKT_TEXT, ip, ua(req), Date.now()); } }
+      if (typeof b.whatsapp === 'boolean') { const v = b.whatsapp ? 1 : 0; if (v && !u.phone) return fail(res, 400, 'Cadastre seu telefone antes de ativar o WhatsApp.'); if (v !== u.whatsapp) { q.setWa.run(v, u.id); q.log.run(u.id, 'whatsapp', v, TERMS_VERSION, WA_TEXT, ip, ua(req), Date.now()); } }
+      return send(res, 200, { ok: true, user: publicUser(q.byId.get(u.id)) });
+    }
+    if (m === 'PUT' && p === '/api/me/profile') {
+      const b = await readJson(req);
+      const phone = normPhone(b.phone), area = normArea(b.area);
+      if (phone === null) return fail(res, 400, 'Telefone inválido. Use DDD + número, ex.: (19) 99999-8888.');
+      if (!phone) return fail(res, 400, 'O WhatsApp é obrigatório na sua conta.');
+      q.setProfile.run(phone || null, area || null, u.id);
+      if (!phone && u.whatsapp) { q.setWa.run(0, u.id); q.log.run(u.id, 'whatsapp', 0, TERMS_VERSION, 'Telefone removido pelo titular', ip, ua(req), Date.now()); }
+      return send(res, 200, { ok: true, user: publicUser(q.byId.get(u.id)) });
     }
     if (m === 'PUT' && p === '/api/me/password') {
       const b = await readJson(req);
@@ -254,15 +297,29 @@ async function route(req, res) {
     if (limited(ip, 'adm', 120)) return fail(res, 429, 'Muitas tentativas.');
     if (!isAdmin(req)) return fail(res, 401, 'Token de mentor inválido.');
     if (m === 'GET' && p === '/api/admin/students') {
-      const rows = q.all.all().map((u) => ({ id: u.id, nome: u.name, email: u.email, criadoEm: u.created_at, ultimoAcesso: u.last_seen, aceitaMarketing: !!u.marketing, ...summary(u.state) }));
+      const rows = q.all.all().map((u) => ({ id: u.id, nome: u.name, email: u.email, telefone: u.phone || '', area: u.area || '', criadoEm: u.created_at, ultimoAcesso: u.last_seen, aceitaMarketing: !!u.marketing, aceitaWhatsapp: !!(u.whatsapp && u.phone), ...summary(u.state) }));
       return send(res, 200, { total: rows.length, alunos: rows });
     }
     if (m === 'GET' && p === '/api/admin/leads.csv') {
       const base = PUBLIC_URL || `https://${req.headers.host}`;
-      const lines = [['nome', 'email', 'cadastro', 'link_descadastro'].map(csvCell).join(',')];
-      for (const r of db.prepare('SELECT name,email,created_at,unsub_key FROM users WHERE marketing=1 ORDER BY created_at').all())
-        lines.push([r.name, r.email, new Date(r.created_at).toISOString(), `${base}/api/unsubscribe?k=${r.unsub_key}`].map(csvCell).join(','));
+      const lines = [['nome', 'email', 'area', 'cadastro', 'link_descadastro'].map(csvCell).join(',')];
+      for (const r of db.prepare('SELECT name,email,area,created_at,unsub_key FROM users WHERE marketing=1 ORDER BY created_at').all())
+        lines.push([r.name, r.email, r.area || '', new Date(r.created_at).toISOString(), `${base}/api/unsubscribe?k=${r.unsub_key}`].map(csvCell).join(','));
       return send(res, 200, '﻿' + lines.join('\n'), { 'Content-Type': 'text/csv; charset=utf-8', 'Content-Disposition': 'attachment; filename="leads-timoneiro.csv"' });
+    }
+    if (m === 'GET' && p === '/api/admin/whatsapp.csv') {
+      const lines = [['nome', 'telefone', 'area', 'cadastro', 'link_whatsapp'].map(csvCell).join(',')];
+      for (const r of db.prepare("SELECT name,phone,area,created_at FROM users WHERE whatsapp=1 AND phone IS NOT NULL AND phone<>'' ORDER BY created_at").all())
+        lines.push([r.name, r.phone, r.area || '', new Date(r.created_at).toISOString(), `https://wa.me/${r.phone}`].map(csvCell).join(','));
+      return send(res, 200, '\ufeff' + lines.join('\n'), { 'Content-Type': 'text/csv; charset=utf-8', 'Content-Disposition': 'attachment; filename="whatsapp-timoneiro.csv"' });
+    }
+    const oo = p.match(/^\/api\/admin\/students\/(\d+)\/optout$/);
+    if (m === 'POST' && oo) {
+      const u = q.byId.get(+oo[1]); if (!u) return fail(res, 404, 'Aluno não encontrado.');
+      const b = await readJson(req); const canal = b.canal === 'email' ? 'marketing' : 'whatsapp';
+      if (canal === 'marketing' && u.marketing) { q.setMkt.run(0, u.id); q.log.run(u.id, 'marketing', 0, TERMS_VERSION, 'Descadastro pedido ao mentor', ip, ua(req), Date.now()); }
+      if (canal === 'whatsapp' && u.whatsapp) { q.setWa.run(0, u.id); q.log.run(u.id, 'whatsapp', 0, TERMS_VERSION, 'Descadastro pedido ao mentor', ip, ua(req), Date.now()); }
+      return send(res, 200, { ok: true });
     }
     const mm = p.match(/^\/api\/admin\/students\/(\d+)\/reset-password$/);
     if (m === 'POST' && mm) {
