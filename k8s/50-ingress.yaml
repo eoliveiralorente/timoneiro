@@ -9,7 +9,7 @@ metadata:
 spec:
   ingressClassName: traefik
   rules:
-    - host: lab.seudominio.com.br
+    - host: timoneiro.187-90-179-230.sslip.io
       http:
         paths:
           - path: /
@@ -17,5 +17,5 @@ spec:
             backend:
               service: {name: timoneiro, port: {number: 80}}
   # tls:
-  #   - hosts: [lab.seudominio.com.br]
+  #   - hosts: [timoneiro.187-90-179-230.sslip.io]
   #     secretName: timoneiro-tls
