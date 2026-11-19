@@ -4,10 +4,12 @@ metadata:
   name: timoneiro
   namespace: timoneiro
   annotations:
-    # Com cert-manager instalado, descomente para HTTPS automático:
-    # cert-manager.io/cluster-issuer: letsencrypt
+    cert-manager.io/cluster-issuer: letsencrypt
 spec:
   ingressClassName: traefik
+  tls:
+    - hosts: [timoneiro.200-229-75-14.sslip.io]
+      secretName: timoneiro-tls
   rules:
     - host: timoneiro.200-229-75-14.sslip.io
       http:
