@@ -5,6 +5,7 @@ metadata:
   namespace: timoneiro
   annotations:
     cert-manager.io/cluster-issuer: letsencrypt
+    traefik.ingress.kubernetes.io/router.middlewares: timoneiro-redirect-https@kubernetescrd
 spec:
   ingressClassName: traefik
   tls:

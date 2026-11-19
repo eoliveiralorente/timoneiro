@@ -6,4 +6,5 @@ resources:
   - 20-pvc.yaml
   - 30-deployment.yaml
   - 40-service.yaml
+  - 45-redirect.yaml
   - 50-ingress.yaml
