@@ -4,7 +4,7 @@ metadata:
   name: timoneiro-config
   namespace: timoneiro
 data:
-  PUBLIC_URL: "https://timoneiro.187-90-179-230.sslip.io"
+  PUBLIC_URL: "https://timoneiro.200-229-75-14.sslip.io"
   MENTORIA_URL: "https://seudominio.com.br/mentoria"
   LOJA_URL: "https://shopee.com.br/sua-loja"
   CONTATO_EMAIL: "contato@seudominio.com.br"
