@@ -18,6 +18,7 @@ const CONFIG = {
   lojaUrl: process.env.LOJA_URL || '',
   ebookUrl: process.env.EBOOK_URL || '',
   ebookTitle: process.env.EBOOK_TITLE || 'Do Zero ao DevOps com AIOps',
+  mentorWhatsapp: String(process.env.MENTOR_WHATSAPP || '').replace(/\D/g, ''),
   contato: process.env.CONTATO_EMAIL || '',
 };
 // Versão e texto exatos dos consentimentos (guardados no log a cada aceite)
@@ -69,12 +70,25 @@ CREATE TABLE IF NOT EXISTS events(
   at INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS ix_events_user ON events(user_id);
+CREATE TABLE IF NOT EXISTS certificates(
+  id TEXT PRIMARY KEY,
+  user_id INTEGER NOT NULL UNIQUE REFERENCES users(id) ON DELETE CASCADE,
+  name TEXT NOT NULL,
+  issued_at INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS xp_week(
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  week TEXT NOT NULL,
+  xp INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY(user_id, week)
+);
 `);
 { // migração: novas colunas sem perder dados
   const cols = db.prepare('PRAGMA table_info(users)').all().map((c) => c.name);
   if (!cols.includes('phone')) db.exec('ALTER TABLE users ADD COLUMN phone TEXT');
   if (!cols.includes('whatsapp')) db.exec('ALTER TABLE users ADD COLUMN whatsapp INTEGER NOT NULL DEFAULT 0');
   if (!cols.includes('area')) db.exec('ALTER TABLE users ADD COLUMN area TEXT');
+  if (!cols.includes('ranking')) db.exec('ALTER TABLE users ADD COLUMN ranking INTEGER NOT NULL DEFAULT 1');
 }
 const q = {
   byEmail: db.prepare('SELECT * FROM users WHERE email=?'),
@@ -90,6 +104,14 @@ const q = {
   del: db.prepare('DELETE FROM users WHERE id=?'),
   event: db.prepare('INSERT INTO events(user_id,kind,at) VALUES(?,?,?)'),
   clicks: db.prepare('SELECT user_id, kind, COUNT(*) n, MAX(at) last FROM events GROUP BY user_id, kind'),
+  certOf: db.prepare('SELECT * FROM certificates WHERE user_id=?'),
+  certById: db.prepare('SELECT c.*, u.state FROM certificates c JOIN users u ON u.id=c.user_id WHERE c.id=?'),
+  certNew: db.prepare('INSERT INTO certificates(id,user_id,name,issued_at) VALUES(?,?,?,?)'),
+  xpAdd: db.prepare('INSERT INTO xp_week(user_id,week,xp) VALUES(?,?,?) ON CONFLICT(user_id,week) DO UPDATE SET xp=xp+excluded.xp'),
+  top: db.prepare('SELECT u.id, u.name, u.state, w.xp FROM xp_week w JOIN users u ON u.id=w.user_id WHERE w.week=? AND u.ranking=1 AND w.xp>0 ORDER BY w.xp DESC, u.id ASC LIMIT 10'),
+  myWeek: db.prepare('SELECT xp FROM xp_week WHERE user_id=? AND week=?'),
+  above: db.prepare('SELECT COUNT(*) n FROM xp_week w JOIN users u ON u.id=w.user_id WHERE w.week=? AND u.ranking=1 AND w.xp>?'),
+  setRanking: db.prepare('UPDATE users SET ranking=? WHERE id=?'),
   log: db.prepare('INSERT INTO consent_log(user_id,kind,granted,text_version,text,ip,ua,at) VALUES(?,?,?,?,?,?,?,?)'),
   logsOf: db.prepare('SELECT kind,granted,text_version,text,ip,at FROM consent_log WHERE user_id=? ORDER BY at'),
   all: db.prepare('SELECT id,name,email,phone,area,whatsapp,created_at,last_seen,marketing,state,state_updated FROM users ORDER BY last_seen DESC'),
@@ -171,7 +193,7 @@ const isAdmin = (req) => {
   return false;
 };
 const EMAIL_RE = /^[^\s@]{1,64}@[^\s@]{1,190}\.[^\s@]{2,}$/;
-const publicUser = (u) => ({ id: u.id, name: u.name, email: u.email, phone: u.phone || '', area: u.area || '', marketing: !!u.marketing, whatsapp: !!u.whatsapp, isAdmin: isAdminUser(u), createdAt: u.created_at });
+const publicUser = (u) => ({ id: u.id, name: u.name, email: u.email, phone: u.phone || '', area: u.area || '', marketing: !!u.marketing, whatsapp: !!u.whatsapp, ranking: u.ranking !== 0, isAdmin: isAdminUser(u), createdAt: u.created_at });
 // Telefone BR: guarda só dígitos com DDI 55 (ex.: 5519999998888). Vazio = sem telefone.
 function normPhone(v) {
   let d = String(v || '').replace(/\D/g, '');
@@ -180,6 +202,18 @@ function normPhone(v) {
   if ((d.length === 10 || d.length === 11) && !d.startsWith('55')) d = '55' + d;
   return /^55\d{10,11}$/.test(d) ? d : null;
 }
+// Semana começa segunda 00:00 no horário de Brasília (UTC-3); a chave é a data da segunda-feira
+function weekKey(t = Date.now()) {
+  const d = new Date(t - 3 * 3600e3); const dow = (d.getUTCDay() + 6) % 7;
+  const mon = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() - dow));
+  return mon.toISOString().slice(0, 10);
+}
+const weekEnd = (key) => Date.parse(key + 'T00:00:00Z') + 7 * 864e5 + 3 * 3600e3;
+const shortName = (n) => { const p = String(n).trim().split(/\s+/); return p.length > 1 ? `${p[0]} ${p[p.length - 1][0].toUpperCase()}.` : p[0]; };
+const stateOf = (js) => { try { return JSON.parse(js || '{}') || {}; } catch { return {}; } };
+const ROUTE = []; for (let i = 0; i < 12; i++) ROUTE.push(i + 'l', i + 'b');
+const routeDone = (st) => ROUTE.every((k) => st.done && st.done[k]);
+const certId = () => { const A = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; let s = ''; for (const b of crypto.randomBytes(10)) s += A[b % A.length]; return 'TIM-' + s.slice(0, 5) + '-' + s.slice(5); };
 const normArea = (v) => (AREAS.includes(String(v || '')) ? String(v) : '');
 const newToken = (u) => sign({ uid: u.id, pv: u.pass_hash.slice(-10), exp: Date.now() + 30 * 864e5 });
 function summary(stateJson) {
@@ -209,6 +243,29 @@ function serveStatic(res, file) {
   });
 }
 
+// ---------- página pública do certificado ----------
+function certPage(res, c, req) {
+  const base = PUBLIC_URL || `https://${req.headers.host}`;
+  const e = (v) => String(v).replace(/[&<>"]/g, (m) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[m]));
+  if (!c) { res.writeHead(404, { 'Content-Type': 'text/html; charset=utf-8', ...SEC_HEADERS }); return res.end('<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width"><body style="font-family:system-ui;background:#050b1a;color:#eaf2ff;display:grid;place-items:center;min-height:100vh;text-align:center"><div><h1>Certificado não encontrado</h1><p><a style="color:#3fe0ff" href="/">Conhecer o Timoneiro</a></p></div>'); }
+  const st = stateOf(c.state), stars = Object.values(st.stars || {}).reduce((a, b) => a + (b | 0), 0);
+  const dt = new Date(c.issued_at).toLocaleDateString('pt-BR', { day: '2-digit', month: 'long', year: 'numeric', timeZone: 'America/Sao_Paulo' });
+  const title = `Certificado Timoneiro — ${e(c.name)}`;
+  res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'public, max-age=300', ...SEC_HEADERS });
+  res.end(`<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${title}</title>
+<meta property="og:title" content="${title}"><meta property="og:description" content="${e(c.name)} concluiu a Rota Kubernetes do Timoneiro, jogo criado por Eduardo Lorente de Oliveira."><meta property="og:url" content="${e(base)}/c/${c.id}"><link rel="icon" href="/favicon.svg">
+<style>body{margin:0;min-height:100vh;display:grid;place-items:center;background:radial-gradient(ellipse at 50% 0,#12305a,#050b1a 70%);font-family:Segoe UI,Roboto,Helvetica,Arial,sans-serif;color:#eaf2ff;padding:24px;box-sizing:border-box}
+.c{max-width:760px;width:100%;border:2px solid #f6c453;border-radius:18px;padding:36px 28px;text-align:center;background:rgba(8,18,40,.85);box-shadow:0 0 0 6px rgba(246,196,83,.15),0 30px 60px rgba(0,0,0,.5)}
+.k{letter-spacing:4px;font-size:13px;color:#3fe0ff}.t{font-size:15px;letter-spacing:3px;color:#f6c453;margin-top:14px}.n{font-size:40px;font-weight:800;margin:14px 0 6px}
+.d{color:#b9c6e0;line-height:1.5;max-width:560px;margin:10px auto}.m{display:flex;justify-content:center;gap:28px;flex-wrap:wrap;margin:22px 0;color:#b9c6e0;font-size:14px}.m b{display:block;color:#fff;font-size:18px}
+.s{margin-top:22px;padding-top:16px;border-top:1px solid rgba(246,196,83,.35);color:#b9c6e0;font-size:14px}.s b{color:#fff}.ok{display:inline-block;margin-top:16px;padding:6px 14px;border-radius:20px;background:rgba(74,222,128,.15);color:#86efac;border:1px solid rgba(74,222,128,.5);font-size:13px}a{color:#3fe0ff}</style></head>
+<body><div class="c"><div style="font-size:44px">☸</div><div class="k">TIMONEIRO</div><div class="t">CERTIFICADO DE CONCLUSÃO</div>
+<div class="n">${e(c.name)}</div><div class="d">concluiu a <b>Rota Kubernetes</b> do Timoneiro: 12 ilhas e 12 tempestades, de Pods e Deployments a Ingress, RBAC, Helm e GitOps com ArgoCD.</div>
+<div class="m"><div><b>${dt}</b>Emitido em</div><div><b>★ ${stars}/72</b>Estrelas</div><div><b>${e(c.id)}</b>Código</div></div>
+<div class="ok">✓ Certificado verificado</div>
+<div class="s">Timoneiro · criado por <b>Eduardo Lorente de Oliveira</b> · <a href="/">Jogar o Timoneiro</a></div></div></body></html>`);
+}
+
 // ---------- rotas ----------
 async function route(req, res) {
   const url = new URL(req.url, 'http://x');
@@ -218,6 +275,16 @@ async function route(req, res) {
   if (m === 'GET' && STATIC[p]) return serveStatic(res, STATIC[p]);
   if (m === 'GET' && p === '/healthz') return send(res, 200, { ok: true });
   if (m === 'GET' && p === '/api/config') return send(res, 200, { ...CONFIG, termsVersion: TERMS_VERSION, termsText: TERMS_TEXT, marketingText: MKT_TEXT, whatsappText: WA_TEXT, phoneNotice: PHONE_NOTICE, areas: AREAS });
+
+  if (m === 'GET' && p === '/api/ranking') {
+    const wk = weekKey(), me = authUser(req);
+    const top = q.top.all(wk).map((r, i) => ({ pos: i + 1, nome: shortName(r.name), xp: r.xp, xpTotal: stateOf(r.state).xp | 0, eu: !!me && me.id === r.id }));
+    let mine = null;
+    if (me) { const w = q.myWeek.get(me.id, wk); const xp = w ? w.xp : 0; mine = { xp, pos: xp > 0 && me.ranking !== 0 ? q.above.get(wk, xp).n + 1 : null, visivel: me.ranking !== 0 }; }
+    return send(res, 200, { semana: wk, terminaEm: weekEnd(wk), top, eu: mine });
+  }
+  const cm = p.match(/^\/c\/(TIM-[A-Z0-9]{5}-[A-Z0-9]{5})$/);
+  if (m === 'GET' && cm) return certPage(res, q.certById.get(cm[1]), req);
 
   if (m === 'POST' && p === '/api/register') {
     if (limited(ip, 'reg', 10)) return fail(res, 429, 'Muitas tentativas. Tente mais tarde.');
@@ -269,7 +336,11 @@ async function route(req, res) {
       const b = await readJson(req);
       if (!b.state || typeof b.state !== 'object') return fail(res, 400, 'Estado inválido.');
       const js = JSON.stringify(b.state); if (js.length > 60000) return fail(res, 413, 'Estado muito grande.');
-      const now = Date.now(); q.setState.run(js, now, now, u.id); return send(res, 200, { ok: true, stateUpdated: now });
+      const now = Date.now();
+      const delta = Math.max(0, Math.min(500, (b.state.xp | 0) - (stateOf(u.state).xp | 0)));
+      q.setState.run(js, now, now, u.id);
+      if (delta > 0) q.xpAdd.run(u.id, weekKey(now), delta);
+      return send(res, 200, { ok: true, stateUpdated: now });
     }
     if (m === 'PUT' && p === '/api/me/consent') {
       const b = await readJson(req);
@@ -277,14 +348,25 @@ async function route(req, res) {
       if (typeof b.whatsapp === 'boolean') { const v = b.whatsapp ? 1 : 0; if (v && !u.phone) return fail(res, 400, 'Cadastre seu telefone antes de ativar o WhatsApp.'); if (v !== u.whatsapp) { q.setWa.run(v, u.id); q.log.run(u.id, 'whatsapp', v, TERMS_VERSION, WA_TEXT, ip, ua(req), Date.now()); } }
       return send(res, 200, { ok: true, user: publicUser(q.byId.get(u.id)) });
     }
+    if (m === 'GET' && p === '/api/me/certificate') {
+      const c = q.certOf.get(u.id); return send(res, 200, { certificate: c ? { id: c.id, name: c.name, issuedAt: c.issued_at } : null });
+    }
+    if (m === 'POST' && p === '/api/me/certificate') {
+      const ex = q.certOf.get(u.id);
+      if (ex) return send(res, 200, { certificate: { id: ex.id, name: ex.name, issuedAt: ex.issued_at } });
+      if (!routeDone(stateOf(u.state))) return fail(res, 403, 'Complete as 12 ilhas e as 12 tempestades para receber o certificado.');
+      const id = certId(), now = Date.now(); q.certNew.run(id, u.id, u.name, now);
+      return send(res, 201, { certificate: { id, name: u.name, issuedAt: now } });
+    }
     if (m === 'POST' && p === '/api/me/event') {
       const b = await readJson(req); const kind = String(b.kind || '');
-      if (!['ebook', 'loja', 'mentoria'].includes(kind)) return fail(res, 400, 'Evento inválido.');
+      if (!['ebook', 'loja', 'mentoria', 'mentor'].includes(kind)) return fail(res, 400, 'Evento inválido.');
       if (limited(ip, 'evt', 120)) return send(res, 200, { ok: true });
       q.event.run(u.id, kind, Date.now()); return send(res, 200, { ok: true });
     }
     if (m === 'PUT' && p === '/api/me/profile') {
       const b = await readJson(req);
+      if (typeof b.ranking === 'boolean' && b.phone === undefined) { q.setRanking.run(b.ranking ? 1 : 0, u.id); return send(res, 200, { ok: true, user: publicUser(q.byId.get(u.id)) }); }
       const phone = normPhone(b.phone), area = normArea(b.area);
       if (phone === null) return fail(res, 400, 'Telefone inválido. Use DDD + número, ex.: (19) 99999-8888.');
       if (!phone) return fail(res, 400, 'O WhatsApp é obrigatório na sua conta.');
@@ -299,7 +381,7 @@ async function route(req, res) {
       q.setPass.run(hashPass(np), u.id); return send(res, 200, { ok: true, token: newToken(q.byId.get(u.id)) });
     }
     if (m === 'GET' && p === '/api/me/export') {
-      return send(res, 200, { exportadoEm: new Date().toISOString(), conta: publicUser(u), ultimoAcesso: u.last_seen, progresso: u.state ? JSON.parse(u.state) : null, consentimentos: q.logsOf.all(u.id), cliques: db.prepare('SELECT kind, at FROM events WHERE user_id=? ORDER BY at').all(u.id) }, { 'Content-Disposition': 'attachment; filename="meus-dados-timoneiro.json"' });
+      return send(res, 200, { exportadoEm: new Date().toISOString(), conta: publicUser(u), ultimoAcesso: u.last_seen, progresso: u.state ? JSON.parse(u.state) : null, consentimentos: q.logsOf.all(u.id), cliques: db.prepare('SELECT kind, at FROM events WHERE user_id=? ORDER BY at').all(u.id), certificado: q.certOf.get(u.id) || null, xpSemanal: db.prepare('SELECT week, xp FROM xp_week WHERE user_id=? ORDER BY week').all(u.id) }, { 'Content-Disposition': 'attachment; filename="meus-dados-timoneiro.json"' });
     }
     if (m === 'DELETE' && p === '/api/me') {
       const b = await readJson(req);

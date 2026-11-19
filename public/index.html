@@ -268,6 +268,19 @@ select option{background:#0b1430;color:#fff}
 .ebc .ebc-foot b{line-height:normal;display:block;font-size:3.3cqw;font-weight:700}
 .ebc-foot small{display:block;font-size:1.95cqw;color:#9aa6c4;margin-top:.4cqw}
 .ebc .ebc-site{line-height:normal;margin-left:auto;align-self:flex-end;font-size:2cqw;color:#9aa6c4}
+.rk-head{display:flex;justify-content:space-between;font-size:12px;letter-spacing:1px;text-transform:uppercase;color:var(--mut);margin-bottom:6px}
+.rk-row{display:flex;align-items:center;gap:10px;padding:9px 6px;border-bottom:1px solid var(--line)}
+.rk-row.me{background:rgba(246,196,83,.1);border-radius:10px;border-bottom-color:transparent}
+.rk-pos{width:34px;text-align:center;font-size:22px}.rk-n{font-size:15px;color:var(--mut);font-family:"JetBrains Mono",monospace}
+.rk-name{flex:1;min-width:0;font-size:16px}.rk-name em{font-style:normal;color:var(--gold);font-size:13px}.rk-name small{display:block;font-size:12px;color:var(--mut)}
+.rk-xp{font-family:"JetBrains Mono",monospace;font-size:18px;color:var(--gold2);text-align:right}.rk-xp small{display:block;font-size:10px;color:var(--mut)}
+.rk-empty{color:var(--mut);font-size:15px;padding:8px 0}
+.rk-mine{margin-top:10px;font-size:15px;text-align:center}.rk-mine b{color:var(--gold2)}
+.cp-txt{color:var(--mut);font-size:15px;line-height:1.35;margin-bottom:10px}.cp-txt b{color:var(--txt)}
+.cp-cnt{font-size:13px;color:var(--mut);margin-top:6px;font-family:"JetBrains Mono",monospace}
+.cp-ok{font-size:15px;color:#86efac;margin-bottom:12px}.cp-ok b{color:var(--txt)}
+.cp-row{display:flex;gap:8px;margin-top:10px}.cp-row .btn{margin:0;font-size:14px;padding:12px 6px}
+.cp-link{display:block;text-align:center;margin-top:12px;font-size:14px;color:var(--cy)}
 </style>
 </head>
 <body>
@@ -685,6 +698,7 @@ function profile(){const doneCount=Object.keys(st.done).length,total=nodes.lengt
  <div class="row"><span>Uptime atual / recorde</span><span>${st.up}d / ${st.best}d</span></div>
  <div class="row"><span>Maior combo</span><span>x${st.bestCombo}</span></div>
  <div class="row"><span>Itens para revisar</span><span>${missN}</span></div></div>
+ ${certPanel()}
  ${creatorCard()}
  <div class="panel glass"><h3>Postmortem</h3><p style="color:var(--mut);font-size:15px;margin-bottom:12px;line-height:1.35">Refaça os itens em que você mais errou. Não gasta error budget e recupera +1 escudo.</p><button class="btn cy" onclick="startReview()" ${st.runs?'':'disabled'}>Iniciar postmortem</button></div>
  <div class="panel glass"><h3>Insígnias</h3><div class="badges">${bd.map(a=>`<div class="bd ${a[3]?'':'off'}"><div class="ic">${a[0]}</div><b>${a[1]}</b>${a[2]}</div>`).join('')}</div></div>
@@ -694,7 +708,8 @@ function profile(){const doneCount=Object.keys(st.done).length,total=nodes.lengt
 function daily(){const doneToday=st.daily===today(),avail=pool().length;
  return `<div class="page"><div class="ptitle">Plantão</div><div class="panel glass hero"><div class="ic">📟</div><h2>Plantão do dia</h2>
  <p>3 chamados sorteados das ilhas que você já conquistou. Vale +15 XP e mantém seu uptime.</p>
- ${doneToday?'<p style="color:var(--gr)">✓ Plantão encerrado hoje. Volte amanhã.</p>':avail?`<button class="btn" onclick="startDaily()">Assumir plantão</button>`:'<p>Conclua o primeiro treino para liberar.</p>'}</div></div>
+ ${doneToday?'<p style="color:var(--gr)">✓ Plantão encerrado hoje. Volte amanhã.</p>':avail?`<button class="btn" onclick="startDaily()">Assumir plantão</button>`:'<p>Conclua o primeiro treino para liberar.</p>'}</div>
+ ${API.online?`<div class="panel glass"><h3>🏆 Ranking da semana</h3><div id="rank">${rankHtml()}</div></div>`:''}</div>
  <div class="pagebottom">${tabs()}</div>`}
 
 // ---------- sessão ----------
@@ -722,7 +737,7 @@ function lesson(){
  }else{
   h+=`<div class="qcard glass"><div class="kind">${storm?'⚡ Tempestade · ':''}⌨️ Terminal</div><div class="prompt">${esc(it.p)}</div></div>
   <div class="term"><div class="bar"><i></i><i></i><i></i></div><div class="ln"><span class="ps">aluno@lab:~$</span><input id="cmd" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="digite o comando" value="${esc(S.input)}" ${S.fb&&S.fb.ok?'disabled':''}></div>${S.fb&&S.fb.ok?`<pre>${esc(it.out)}</pre>`:''}</div>`;
-  if(e>=2)h+=`<div class="hint">💡 <b>Dica:</b> ${esc(it.h)}${e>=3?`<br><b>Começa assim:</b> <span class="mono">${esc(partial(it.ex))}</span>`:''}</div>`;
+  if(e>=2)h+=`<div class="hint">💡 <b>Dica:</b> ${esc(it.h)}${e>=3?`<br><b>Começa assim:</b> <span class="mono">${esc(partial(it.ex))}</span>`:''}${e>=3&&mentorOn()?`<br><button class="linkbtn" style="color:var(--cy);margin-top:6px" onclick="talkMentor('dica')">Travou? 💬 Fale com o mentor</button>`:''}</div>`;
  }
  h+=`</div><div class="foot">`;
  if(S.fb){const f=S.fb,doc=`<a class="doc" href="${it.s}" target="_blank" rel="noopener">📖 Ler na documentação oficial</a>`;
@@ -783,7 +798,7 @@ function result(){const r=S.result,storm=S.mode==='storm',rk=rankOf(st.xp);
 function empty(){regen();const mins=Math.max(1,Math.ceil((4*3600e3-(Date.now()-st.bTs))/60000));
  return `<div class="page"><div class="panel glass hero" style="margin-top:60px"><div class="ic">🚨</div><h2>Escudos esgotados</h2>
  <p>Seu error budget acabou. Faça um postmortem dos seus erros para recuperar +1, ou espere ${Math.floor(mins/60)}h${String(mins%60).padStart(2,'0')} pela próxima recarga.</p>
- <button class="btn cy" onclick="startReview()" ${pool().length?'':'disabled'}>Fazer postmortem</button><button class="btn ghost" onclick="go('home')">Voltar ao mapa</button></div></div>`}
+ <button class="btn cy" onclick="startReview()" ${pool().length?'':'disabled'}>Fazer postmortem</button>${mentorBtn('ghost','escudos','💬 Fale com o mentor')}<button class="btn ghost" onclick="go('home')">Voltar ao mapa</button></div></div>`}
 function modalHtml(){
  if(modal==='node'&&selNode)return nodeSheet();
  if(modal==='quit')return `<div class="center-modal"><div class="glass"><div style="font-size:44px">🏳️</div><h3 style="font-size:22px">Abandonar a missão?</h3><p style="color:var(--mut)">O progresso desta etapa será perdido.</p><button class="btn cy" onclick="modal=null;renderModal();focusCmd()">Continuar lutando</button><button class="btn ghost" style="color:var(--rd)" onclick="go('home')">Abandonar</button></div></div>`;
@@ -800,6 +815,8 @@ function renderScreen(){
  const v={home,profile,daily,lesson,result,empty,auth,tesouro}[view]||home;
  $s.innerHTML=v();
  if(view==='home')initWorld();
+ if(view==='daily')loadRanking();
+ if(view==='profile'&&API.user&&CERT===null)loadCert();
  const el=document.getElementById('cmd');
  if(el){el.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();if(S.fb)next();else check()}});el.addEventListener('input',e=>{S.input=e.target.value})}
 }
@@ -856,21 +873,24 @@ function accountPanel(){
  <div class="row"><span>Área</span><span>${u.area?esc(u.area):'—'}</span></div>
  <button class="linkbtn" style="color:var(--cy);margin:6px 0 4px" onclick="modal='profile';renderModal()">Editar WhatsApp e área</button>
  <label class="chk" style="margin:12px 0"><input type="checkbox" ${u.marketing?'checked':''} onchange="setConsent('marketing',this.checked,this)"><span>${esc(API.cfg.marketingText||'Receber novidades e ofertas por e-mail')}</span></label>
+ <label class="chk" style="margin:0 0 12px"><input type="checkbox" ${u.ranking!==false?'checked':''} onchange="setRanking(this.checked,this)"><span>Aparecer no ranking semanal (só primeiro nome e inicial do sobrenome)</span></label>
  <label class="chk" style="margin:0 0 12px"><input type="checkbox" ${u.whatsapp?'checked':''} onchange="setConsent('whatsapp',this.checked,this)"><span>${esc(API.cfg.whatsappText||'Receber contato pelo WhatsApp')}</span></label>
  <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn ghost" style="flex:1;font-size:14px;padding:11px" onclick="exportData()">Baixar meus dados</button><button class="btn ghost" style="flex:1;font-size:14px;padding:11px" onclick="logout()">Sair</button></div>
  ${u.isAdmin?'<a class="btn" style="margin:12px 0 4px;text-align:center;text-decoration:none" href="/admin">⚓ Painel do mentor</a>':''}<button class="linkbtn" style="color:var(--cy);margin-right:16px" onclick="modal='pass';renderModal()">Trocar senha</button><button class="linkbtn" onclick="modal='delete';renderModal()">Excluir minha conta</button></div>`}
 async function changePass(){const v=id=>(document.getElementById(id)||{}).value||'';try{const j=await api('PUT','/api/me/password',{current:v('pw-cur'),next:v('pw-new')});if(j.token)setSession(j.token,API.user);alertBox('Senha alterada.')}catch(e){const el=document.getElementById('pw-err');if(el)el.textContent=e.message}}
+async function setRanking(v,el){try{const j=await api('PUT','/api/me/profile',{ranking:v});API.user=j.user;RANK=null;sfx('click')}catch(e){if(el)el.checked=!v;alertBox(e.message)}}
 async function setConsent(kind,v,el){try{const j=await api('PUT','/api/me/consent',{[kind]:v});API.user=j.user;sfx('click')}catch(e){if(el)el.checked=!v;alertBox(e.message)}}
 function fmtPhone(p){const d=String(p).replace(/^55/,'');return d.length>=10?`(${d.slice(0,2)}) ${d.slice(2,d.length-4)}-${d.slice(-4)}`:p}
 async function saveGatePhone(){const v=id=>(document.getElementById(id)||{}).value||'';const wa=!!(document.getElementById('pf-wa')||{}).checked;try{let j=await api('PUT','/api/me/profile',{phone:v('pf-phone'),area:v('pf-area')});if(wa)j=await api('PUT','/api/me/consent',{whatsapp:true});API.user=j.user;modal=null;renderModal();sfx('ok');if(gateNext){const g=gateNext;gateNext=null;setTimeout(()=>start(g[0],g[1]),300)}}catch(e){const el=document.getElementById('pf-err');if(el)el.textContent=e.message}}
 async function saveProfile(){const v=id=>(document.getElementById(id)||{}).value||'';try{const j=await api('PUT','/api/me/profile',{phone:v('pf-phone'),area:v('pf-area')});API.user=j.user;modal=null;renderModal();renderScreen();sfx('ok')}catch(e){const el=document.getElementById('pf-err');if(el)el.textContent=e.message}}
 async function exportData(){try{const j=await api('GET','/api/me/export');const b=new Blob([JSON.stringify(j,null,2)],{type:'application/json'});const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download='meus-dados-timoneiro.json';document.body.appendChild(a);a.click();a.remove()}catch(e){alertBox(e.message)}}
-function logout(){setSession(null);API.guest=false;try{localStorage.removeItem('timoneiro-guest')}catch(e){}st=fresh();save();splashOn=true;view='home';renderScreen()}
+function logout(){setSession(null);CERT=null;RANK=null;API.guest=false;try{localStorage.removeItem('timoneiro-guest')}catch(e){}st=fresh();save();splashOn=true;view='home';renderScreen()}
 async function deleteAccount(){const pw=(document.getElementById('del-pass')||{}).value||'';try{await api('DELETE','/api/me',{password:pw});setSession(null);try{localStorage.removeItem(KEY)}catch(e){}st=fresh();modal=null;renderModal();splashOn=true;view='home';renderScreen()}catch(e){const el=document.getElementById('del-err');if(el)el.textContent=e.message}}
 function alertBox(msg){modal='msg:'+msg;renderModal()}
 function offers(){if(!S||!S.result)return '';const c=API.cfg,out=[];
  if(API.online&&!API.user&&st.runs>=1)out.push(`<div class="offer glass"><b>${st.done['0b']?'🏝️ Amostra concluída!':'💾 Não perca sua rota'}</b><span>${st.done['0b']?'Crie sua conta para liberar as próximas 11 ilhas.':'A partir da Ilha 01 você vai precisar de uma conta. Crie agora e seu progresso vem junto.'}</span><button class="btn cy" onclick="authGate=true;authTab='new';view='auth';renderScreen()">Criar conta</button></div>`);
  st.offers=st.offers||{};
+ if(API.online&&routeCount()>=nodes.length&&!st.offers.cert){st.offers.cert=1;save();out.push(`<div class="offer glass"><b>🎓 Seu certificado está pronto!</b><span>Você completou a Rota Kubernetes. Emita seu certificado e adicione ao LinkedIn.</span><button class="btn" onclick="go('profile')">Ver meu certificado</button></div>`)}
  if(st.done['2b']&&!st.offers.ebook){st.offers.ebook=1;save();out.push(`<div class="offer glass eb-offer"><div class="eb-thumb" onclick="buy('ebook','vitoria-ilha02-capa')">${ebookCover()}</div><div><b>📘 ${esc(ebookTitle())}</b><span>Gostou de navegar até aqui? O guia do criador do Timoneiro leva você do zero ao DevOps, já usando AIOps.</span><button class="btn" onclick="buy('ebook','vitoria-ilha02')">Quero o e-book</button></div></div>`)}
  if(c.mentoriaUrl&&st.done['4b']&&!st.offers.mentoria){st.offers.mentoria=1;save();out.push(`<div class="offer glass"><b>⚓ Pronto para o cluster de verdade?</b><span>Na mentoria você pratica tudo isso num Kubernetes real, comigo.</span><button class="btn" onclick="buy('mentoria','vitoria-ilha04')">Conhecer a mentoria</button></div>`)}
  if(c.lojaUrl&&S.result.promo&&!st.offers['rank'+S.result.promo[1]]){st.offers['rank'+S.result.promo[1]]=1;save();out.push(`<div class="offer glass"><b>👕 Camiseta ${esc(S.result.promo[1])}</b><span>Você conquistou a patente. Que tal vestir ela?</span><button class="btn" onclick="buy('loja','vitoria-patente')">Ver na loja</button></div>`)}
@@ -883,6 +903,7 @@ function creatorCard(){const m=API.cfg&&API.cfg.mentoriaUrl;return `<div class="
  <div class="cr">${CREATOR.photo?`<img class="avatar" src="${CREATOR.photo}" alt="${CREATOR.name}">`:'<div class="avatar">EL</div>'}<div><b>${CREATOR.name}</b><span>${CREATOR.role} · Kubernetes e ArgoCD</span></div></div>
  <p>Criei o Timoneiro para quem está começando em Kubernetes aprender praticando, do jeito que eu gostaria de ter aprendido.</p>
  <div class="crlinks"><a class="btn ghost" href="${CREATOR.linkedin}" target="_blank" rel="noopener">LinkedIn</a><a class="btn ghost" href="${CREATOR.instagram}" target="_blank" rel="noopener">Instagram</a><a class="btn ghost" href="${CREATOR.github}" target="_blank" rel="noopener">GitHub</a></div>
+ ${mentorOn()?`<button class="btn cy" style="margin-top:10px" onclick="talkMentor('criador')">💬 Fale com o mentor</button>`:''}
  <button class="btn" style="margin-top:10px" onclick="buy('ebook','criador')">📘 E-book: ${esc(ebookTitle())}</button>
  ${m?`<button class="btn ghost" style="margin-top:10px" onclick="buy('mentoria','criador')">Conhecer a mentoria</button>`:''}</div>`}
 async function shareWin(){const r=S&&S.result||{},rk=rankOf(st.xp).cur[1];
@@ -934,7 +955,66 @@ function tesouro(){const c=API.cfg||{},rk=rankOf(st.xp).cur;
  ${c.mentoriaUrl?`<div class="panel glass prod2"><div class="picon">⚓</div><div class="pinfo2"><span class="badge2">Mentoria</span><h3>Pratique num cluster real</h3>
   <p>Tudo o que você vê no Timoneiro, aplicado em Kubernetes de verdade, com acompanhamento do Eduardo.</p>
   <button class="btn ghost" onclick="buy('mentoria','tesouro')">Conhecer a mentoria</button></div></div>`:''}
+ ${mentorOn()?`<div class="panel glass prod2"><div class="picon">💬</div><div class="pinfo2"><span class="badge2">Mentor</span><h3>Travou em alguma ilha?</h3><p>Fale direto com o Eduardo pelo WhatsApp e tire sua dúvida.</p><button class="btn cy" onclick="talkMentor('tesouro')">Fale com o mentor</button></div></div>`:''}
  </div><div class="pagebottom">${tabs()}</div>`}
+
+// ---------- fale com o mentor ----------
+function mentorOn(){return !!(API.cfg&&API.cfg.mentorWhatsapp)}
+function talkMentor(where){if(!mentorOn())return;const nx=nextNode();let onde='';if(nx){const n=nodeInfo(nx);onde=` (estou na Ilha ${String(n.ui).padStart(2,'0')}, ${n.k==='b'?'tempestade':'treino'} "${n.src.t}")`}
+ const nome=API.user?API.user.name.split(' ')[0]:'';const msg=`Oi Eduardo! ${nome?'Aqui é '+nome+'. ':''}Estou jogando o Timoneiro${onde} e queria tirar uma dúvida.`;
+ track('mentor');sfx('open');window.open(`https://wa.me/${API.cfg.mentorWhatsapp}?text=${encodeURIComponent(msg)}`,'_blank','noopener')}
+function mentorBtn(cls,where,label){return mentorOn()?`<button class="btn ${cls||'ghost'}" onclick="talkMentor('${where}')">${label||'💬 Fale com o mentor'}</button>`:''}
+
+// ---------- ranking semanal ----------
+let RANK=null;
+async function loadRanking(){const el=document.getElementById('rank');if(!el)return;try{const r=await fetch('/api/ranking',{headers:API.tok?{Authorization:'Bearer '+API.tok}:{}});RANK=await r.json();const e2=document.getElementById('rank');if(e2)e2.innerHTML=rankHtml()}catch(e){el.innerHTML='<p class="rk-empty">Não foi possível carregar o ranking agora.</p>'}}
+function rankHtml(){if(!RANK)return'<p class="rk-empty">Carregando…</p>';const ms=Math.max(0,RANK.terminaEm-Date.now()),d=Math.floor(ms/864e5),hh=Math.floor(ms%864e5/36e5);
+ const medal=i=>['🥇','🥈','🥉'][i-1]||`<span class="rk-n">${i}º</span>`;
+ const rows=RANK.top.length?RANK.top.map(r=>{const rk=rankOf(r.xpTotal).cur;return`<div class="rk-row ${r.eu?'me':''}"><div class="rk-pos">${medal(r.pos)}</div><div class="rk-name">${esc(r.nome)}${r.eu?' <em>(você)</em>':''}<small>${rk[2]} ${esc(rk[1])}</small></div><div class="rk-xp">${r.xp}<small>XP</small></div></div>`}).join(''):'<p class="rk-empty">Ninguém pontuou ainda nesta semana. Seja o primeiro!</p>';
+ let foot='';if(!API.user)foot=`<button class="btn cy" style="margin-top:10px" onclick="authGate=true;authTab='new';view='auth';renderScreen()">Criar conta e entrar no ranking</button>`;
+ else if(RANK.eu&&!RANK.eu.visivel)foot='<p class="rk-empty">Você escolheu não aparecer no ranking (Carreira → Sua conta).</p>';
+ else if(RANK.eu)foot=`<div class="rk-mine">${RANK.eu.pos?`Sua posição: <b>${RANK.eu.pos}º</b> · `:''}<b>${RANK.eu.xp} XP</b> nesta semana</div>`;
+ return `<div class="rk-head"><span>Termina em ${d}d ${hh}h</span><span>XP da semana</span></div>${rows}${foot}`}
+
+// ---------- certificado ----------
+let CERT=null,certBusy=false;
+async function loadCert(){if(!API.online||!API.user)return;try{const j=await api('GET','/api/me/certificate');CERT=j.certificate||false;const el=document.getElementById('certp');if(el)el.outerHTML=certPanel()}catch(e){}}
+function routeCount(){return nodes.filter(id=>st.done[id]).length}
+function certPanel(){if(!API.online)return'';const n=routeCount(),all=n>=nodes.length;let body;
+ if(!all)body=`<p class="cp-txt">Complete as 12 ilhas e as 12 tempestades para ganhar seu certificado, com página de verificação e botão para adicionar ao LinkedIn.</p><div class="xpbar"><i style="width:${Math.round(n/nodes.length*100)}%"></i></div><div class="cp-cnt">${n}/${nodes.length} etapas</div>`;
+ else if(!API.user)body=`<p class="cp-txt">Rota completa! Crie sua conta para emitir seu certificado.</p><button class="btn" onclick="authTab='new';view='auth';renderScreen()">Criar conta</button>`;
+ else if(!CERT)body=`<p class="cp-txt">🎉 Rota completa! Seu certificado será emitido em nome de <b>${esc(API.user.name)}</b>.</p><button class="btn" ${certBusy?'disabled':''} onclick="issueCert()">${certBusy?'Emitindo…':'Emitir meu certificado'}</button>`;
+ else body=`<div class="cp-ok">✓ Emitido para <b>${esc(CERT.name)}</b> · ${esc(CERT.id)}</div>
+  <button class="btn" onclick="addLinkedIn()">➕ Adicionar ao LinkedIn</button>
+  <div class="cp-row"><button class="btn ghost" onclick="downloadCert()">⬇ Baixar imagem</button><button class="btn ghost" onclick="shareCert()">📣 Compartilhar</button></div>
+  <a class="cp-link" href="/c/${esc(CERT.id)}" target="_blank" rel="noopener">Ver página de verificação</a>`;
+ return `<div class="panel glass" id="certp"><h3>🎓 Certificado de conclusão</h3>${body}</div>`}
+async function issueCert(){certBusy=true;renderScreen();try{const j=await api('POST','/api/me/certificate',{});CERT=j.certificate;sfx('win')}catch(e){alertBox(e.message)}certBusy=false;renderScreen()}
+const certUrl=()=>location.origin+'/c/'+CERT.id;
+function addLinkedIn(){const d=new Date(CERT.issuedAt),u=new URL('https://www.linkedin.com/profile/add');const q={startTask:'CERTIFICATION_NAME',name:'Rota Kubernetes — Timoneiro',organizationName:'Timoneiro by Eduardo Lorente de Oliveira',issueYear:d.getFullYear(),issueMonth:d.getMonth()+1,certUrl:certUrl(),certId:CERT.id};for(const k in q)u.searchParams.set(k,q[k]);window.open(u.toString(),'_blank','noopener')}
+async function shareCert(){const text=`🎓 Concluí a Rota Kubernetes do Timoneiro, o jogo para aprender Kubernetes criado por ${CREATOR.name} (${CREATOR.handle}): 12 ilhas e 12 tempestades, de Pods a GitOps com ArgoCD. Certificado: ${certUrl()} #Kubernetes #DevOps #Timoneiro`;
+ try{if(navigator.share){await navigator.share({title:'Meu certificado Timoneiro',text});return}}catch(e){if(e&&e.name==='AbortError')return}
+ try{await navigator.clipboard.writeText(text);alertBox('Texto copiado! Cole no LinkedIn, Instagram ou WhatsApp.')}catch(e){alertBox(text)}}
+function loadImg(src){return new Promise(r=>{const i=new Image();i.onload=()=>r(i);i.onerror=()=>r(null);i.src=src})}
+async function drawCert(){const W=1600,H=1000,c=document.createElement('canvas');c.width=W;c.height=H;const g=c.getContext('2d'),F='"Segoe UI",Roboto,Arial,sans-serif';
+ const bg=g.createRadialGradient(W/2,0,100,W/2,H/2,1100);bg.addColorStop(0,'#14335f');bg.addColorStop(1,'#050b1a');g.fillStyle=bg;g.fillRect(0,0,W,H);
+ g.strokeStyle='#f6c453';g.lineWidth=6;g.strokeRect(40,40,W-80,H-80);g.strokeStyle='rgba(246,196,83,.45)';g.lineWidth=2;g.strokeRect(58,58,W-116,H-116);
+ const cx=W/2;g.textAlign='center';
+ g.fillStyle='#f6c453';g.font='72px serif';g.fillText('☸',cx,170);
+ g.fillStyle='#3fe0ff';g.font=`600 26px ${F}`;g.fillText('T I M O N E I R O',cx,220);
+ g.fillStyle='#ffdf8a';g.font='700 50px Georgia,serif';g.fillText('Certificado de Conclusão',cx,300);
+ g.fillStyle='#b9c6e0';g.font=`28px ${F}`;g.fillText('Certificamos que',cx,370);
+ let fs=86;g.font=`800 ${fs}px ${F}`;while(g.measureText(CERT.name).width>W-300&&fs>40){fs-=4;g.font=`800 ${fs}px ${F}`}
+ g.fillStyle='#fff';g.fillText(CERT.name,cx,470);
+ g.fillStyle='#d6dff0';g.font=`30px ${F}`;g.fillText('concluiu a Rota Kubernetes do Timoneiro: 12 ilhas e 12 tempestades,',cx,545);g.fillText('de Pods e Deployments a Ingress, RBAC, Helm e GitOps com ArgoCD.',cx,590);
+ const stars=Object.values(st.stars||{}).reduce((a,b)=>a+(b|0),0),dt=new Date(CERT.issuedAt).toLocaleDateString('pt-BR',{day:'2-digit',month:'long',year:'numeric'});
+ [[dt,'Emitido em'],[`★ ${stars}/72`,'Estrelas'],[CERT.id,'Código']].forEach((m,i)=>{const x=cx+(i-1)*420;g.fillStyle='#fff';g.font=`700 32px ${F}`;g.fillText(m[0],x,690);g.fillStyle='#8ea3c7';g.font=`22px ${F}`;g.fillText(m[1],x,725)});
+ g.strokeStyle='rgba(246,196,83,.5)';g.lineWidth=2;g.beginPath();g.moveTo(cx-340,790);g.lineTo(cx+340,790);g.stroke();
+ const ph=await loadImg(CREATOR.photo);const px=cx-290;if(ph){g.save();g.beginPath();g.arc(px,860,42,0,7);g.clip();const s=Math.min(ph.width,ph.height);g.drawImage(ph,(ph.width-s)/2,0,s,s,px-42,818,84,84);g.restore();g.strokeStyle='#ff7b33';g.lineWidth=4;g.beginPath();g.arc(px,860,42,0,7);g.stroke()}
+ g.textAlign='left';g.fillStyle='#fff';g.font=`700 32px ${F}`;g.fillText(CREATOR.name,px+62,852);g.fillStyle='#b9c6e0';g.font=`22px ${F}`;g.fillText('Criador do Timoneiro · '+CREATOR.role,px+62,888);
+ g.textAlign='center';g.fillStyle='#8ea3c7';g.font=`20px ${F}`;g.fillText('Verifique em '+certUrl(),cx,924);
+ return c}
+async function downloadCert(){try{const c=await drawCert();c.toBlob(b=>{const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download=`certificado-timoneiro-${CERT.id}.png`;document.body.appendChild(a);a.click();a.remove()},'image/png')}catch(e){alertBox('Não foi possível gerar a imagem agora.')}}
 
 boot();
 </script>
