@@ -1,0 +1,28 @@
+# Opcional: cópia diária do banco dentro do mesmo volume (guarda 7 dias).
+# Para backup de verdade, copie /data/backups para fora do cluster.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: timoneiro-backup
+  namespace: timoneiro
+spec:
+  schedule: "17 4 * * *"
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          restartPolicy: OnFailure
+          securityContext: {runAsUser: 1000, fsGroup: 1000}
+          affinity:
+            podAffinity:
+              requiredDuringSchedulingIgnoredDuringExecution:
+                - labelSelector: {matchLabels: {app: timoneiro}}
+                  topologyKey: kubernetes.io/hostname
+          containers:
+            - name: backup
+              image: node:22-alpine
+              command: ["node", "-e", "const {DatabaseSync}=require('node:sqlite');const fs=require('fs');fs.mkdirSync('/data/backups',{recursive:true});const f='/data/backups/timoneiro-'+new Date().toISOString().slice(0,10)+'.db';try{fs.unlinkSync(f)}catch{};new DatabaseSync('/data/timoneiro.db').exec(\"VACUUM INTO '\"+f+\"'\");for(const x of fs.readdirSync('/data/backups').sort().slice(0,-7))fs.unlinkSync('/data/backups/'+x);console.log('ok',f)"]
+              volumeMounts: [{name: data, mountPath: /data}]
+          volumes:
+            - name: data
+              persistentVolumeClaim: {claimName: timoneiro-data}

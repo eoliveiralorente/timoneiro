@@ -1,0 +1,44 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: timoneiro
+  namespace: timoneiro
+  labels: {app: timoneiro}
+spec:
+  replicas: 1                 # SQLite: uma réplica só
+  strategy: {type: Recreate}  # evita dois pods no mesmo volume
+  selector:
+    matchLabels: {app: timoneiro}
+  template:
+    metadata:
+      labels: {app: timoneiro}
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+      containers:
+        - name: app
+          image: ghcr.io/eoliveiralorente/timoneiro:1.0.0
+          ports: [{containerPort: 8080, name: http}]
+          envFrom:
+            - configMapRef: {name: timoneiro-config}
+            - secretRef: {name: timoneiro-secrets}
+          volumeMounts: [{name: data, mountPath: /data}]
+          readinessProbe:
+            httpGet: {path: /healthz, port: http}
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: {path: /healthz, port: http}
+            initialDelaySeconds: 10
+            periodSeconds: 20
+          resources:
+            requests: {cpu: 50m, memory: 64Mi}
+            limits: {memory: 256Mi}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: ["ALL"]}
+      volumes:
+        - name: data
+          persistentVolumeClaim: {claimName: timoneiro-data}

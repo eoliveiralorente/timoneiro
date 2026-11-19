@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: timoneiro-config
+  namespace: timoneiro
+data:
+  PUBLIC_URL: "https://lab.seudominio.com.br"
+  MENTORIA_URL: "https://seudominio.com.br/mentoria"
+  LOJA_URL: "https://shopee.com.br/sua-loja"
+  CONTATO_EMAIL: "contato@seudominio.com.br"
+  TERMS_VERSION: "2026-11-16"

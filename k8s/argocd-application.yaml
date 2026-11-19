@@ -1,0 +1,17 @@
+# Opcional: deixe o ArgoCD cuidar do deploy a partir do seu repositório.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: timoneiro
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/eoliveiralorente/timoneiro.git
+    targetRevision: main
+    path: k8s
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: timoneiro
+  syncPolicy:
+    automated: {prune: true, selfHeal: true}

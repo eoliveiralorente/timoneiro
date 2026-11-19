@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Timoneiro — Painel do Mentor</title>
+<style>
+:root{--bg:#050b1a;--panel:rgba(14,28,56,.85);--line:rgba(120,170,255,.22);--txt:#eaf2ff;--mut:#8ea3c7;--gold:#f6c453;--cy:#3fe0ff;--gr:#4ade80;--rd:#ff4d6d}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:system-ui,-apple-system,"Segoe UI",sans-serif;background:radial-gradient(ellipse at 50% -20%,rgba(63,224,255,.15),transparent 60%),var(--bg);color:var(--txt);min-height:100vh;padding:16px}
+.wrap{max-width:1100px;margin:0 auto}
+h1{font-size:22px;margin-bottom:4px}h1 span{color:var(--gold)}
+.sub{color:var(--mut);font-size:14px;margin-bottom:16px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:14px}
+input,select{padding:11px 12px;border-radius:10px;border:1px solid var(--line);background:rgba(0,0,0,.35);color:#fff;font-size:15px;outline:none}
+button{padding:11px 14px;border-radius:10px;border:none;font-weight:700;cursor:pointer;font-size:14px;background:linear-gradient(180deg,#ffd978,#e59a22);color:#2a1700}
+button.ghost{background:transparent;color:var(--txt);border:1px solid var(--line)}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin:14px 0}
+.kpi small{display:block;color:var(--mut);font-size:12px;text-transform:uppercase;letter-spacing:1px}
+.kpi b{font-size:26px}
+.bar{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;align-items:center}
+.bar input{flex:1;min-width:180px}
+.chips button{background:transparent;border:1px solid var(--line);color:var(--mut)}
+.chips button.on{border-color:var(--gold);color:var(--gold);background:rgba(246,196,83,.1)}
+table{width:100%;border-collapse:collapse;font-size:14px}
+th{text-align:left;color:var(--mut);font-weight:600;font-size:12px;text-transform:uppercase;letter-spacing:.5px;padding:8px;border-bottom:1px solid var(--line)}
+td{padding:10px 8px;border-bottom:1px solid rgba(120,170,255,.1);vertical-align:top}
+td small{display:block;color:var(--mut)}
+.tag{display:inline-block;padding:2px 8px;border-radius:20px;font-size:12px;border:1px solid var(--line)}
+.ok{color:var(--gr);border-color:rgba(74,222,128,.4)}.warn{color:var(--rd);border-color:rgba(255,77,109,.4)}.no{color:var(--mut)}
+.prog{height:6px;background:rgba(255,255,255,.1);border-radius:3px;overflow:hidden;margin-top:5px;width:120px}.prog i{display:block;height:100%;background:linear-gradient(90deg,#f6a821,#ffe08a)}
+.err{color:#ff9aab;margin-top:10px}
+.mini{padding:6px 10px;font-size:12px}
+@media(max-width:760px){thead{display:none}table,tbody,tr,td{display:block;width:100%}tr{border:1px solid var(--line);border-radius:12px;margin-bottom:10px;padding:6px}td{border:none;padding:6px 8px}}
+</style>
+</head>
+<body><div class="wrap">
+<h1>☸ Timoneiro · <span>Painel do Mentor</span></h1>
+<div class="sub">Acompanhe a evolução dos alunos e exporte os contatos que aceitaram receber ofertas.</div>
+<div id="root"></div>
+</div>
+<script>
+let TOKEN='';try{TOKEN=sessionStorage.getItem('tim-admin')||''}catch(e){}
+let DATA=null,filter='todos',search='';
+const esc=s=>String(s??'').replace(/[&<>"]/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m]));
+const fmt=t=>t?new Date(t).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',year:'2-digit',hour:'2-digit',minute:'2-digit'}):'—';
+const days=t=>Math.floor((Date.now()-t)/864e5);
+async function call(path){const r=await fetch(path,{headers:{Authorization:'Admin '+TOKEN}});if(!r.ok){let j={};try{j=await r.json()}catch(e){}throw new Error(j.error||'Erro '+r.status)}return r}
+function login(err){document.getElementById('root').innerHTML=`<form class="card" style="max-width:420px" onsubmit="event.preventDefault();TOKEN=document.getElementById('t').value.trim();load()"><p style="margin-bottom:10px">Informe o token de mentor (ADMIN_TOKEN):</p><input id="t" type="password" style="width:100%;margin-bottom:10px" autocomplete="off"><button style="width:100%">Entrar</button>${err?`<div class="err">${esc(err)}</div>`:''}</form>`}
+async function load(){try{const r=await call('/api/admin/students');DATA=await r.json();try{sessionStorage.setItem('tim-admin',TOKEN)}catch(e){}render()}catch(e){try{sessionStorage.removeItem('tim-admin')}catch(_){}login(e.message)}}
+function rows(){let a=DATA.alunos;
+ if(filter==='risco')a=a.filter(x=>days(x.ultimoAcesso)>=5&&x.proxima!=='Rota completa');
+ if(filter==='engajados')a=a.filter(x=>x.uptime>=3||days(x.ultimoAcesso)<2&&x.etapas>=4);
+ if(filter==='marketing')a=a.filter(x=>x.aceitaMarketing);
+ if(filter==='completos')a=a.filter(x=>x.proxima==='Rota completa');
+ if(search){const s=search.toLowerCase();a=a.filter(x=>x.nome.toLowerCase().includes(s)||x.email.toLowerCase().includes(s))}return a}
+function render(){const A=DATA.alunos,ativos=A.filter(x=>days(x.ultimoAcesso)<7).length,mkt=A.filter(x=>x.aceitaMarketing).length,fim=A.filter(x=>x.proxima==='Rota completa').length,risco=A.filter(x=>days(x.ultimoAcesso)>=5&&x.proxima!=='Rota completa').length;
+ const list=rows();
+ document.getElementById('root').innerHTML=`
+ <div class="kpis"><div class="card kpi"><small>Alunos</small><b>${A.length}</b></div><div class="card kpi"><small>Ativos (7 dias)</small><b style="color:var(--cy)">${ativos}</b></div><div class="card kpi"><small>Em risco</small><b style="color:var(--rd)">${risco}</b></div><div class="card kpi"><small>Aceitam ofertas</small><b style="color:var(--gold)">${mkt}</b></div><div class="card kpi"><small>Rota completa</small><b style="color:var(--gr)">${fim}</b></div></div>
+ <div class="card">
+ <div class="bar"><input placeholder="Buscar nome ou e-mail" value="${esc(search)}" oninput="search=this.value;render();this.focus();this.setSelectionRange(this.value.length,this.value.length)"><button onclick="exportCsv()">⬇ Exportar leads (CSV)</button><button class="ghost" onclick="load()">↻</button><button class="ghost" onclick="TOKEN='';try{sessionStorage.removeItem('tim-admin')}catch(e){};login()">Sair</button></div>
+ <div class="bar chips">${[['todos','Todos'],['risco','Em risco (5+ dias parado)'],['engajados','Engajados'],['marketing','Aceitam ofertas'],['completos','Rota completa']].map(([k,l])=>`<button class="${filter===k?'on':''}" onclick="filter='${k}';render()">${l}</button>`).join('')}</div>
+ <table><thead><tr><th>Aluno</th><th>Progresso</th><th>XP / ★</th><th>Uptime</th><th>Último acesso</th><th>Ofertas</th><th></th></tr></thead><tbody>
+ ${list.map(x=>{const d=days(x.ultimoAcesso);return `<tr><td><b>${esc(x.nome)}</b><small>${esc(x.email)}</small></td>
+ <td>${esc(x.proxima)}<small>${x.etapas}/24 etapas</small><div class="prog"><i style="width:${Math.round(x.etapas/24*100)}%"></i></div></td>
+ <td>${x.xp} XP<small>★ ${x.estrelas}</small></td><td>${x.uptime}d<small>recorde ${x.melhorUptime}d</small></td>
+ <td>${fmt(x.ultimoAcesso)}<small>${d===0?'hoje':d===1?'ontem':d+' dias atrás'}</small>${d>=5&&x.proxima!=='Rota completa'?' <span class="tag warn">em risco</span>':''}</td>
+ <td>${x.aceitaMarketing?'<span class="tag ok">aceita</span>':'<span class="tag no">não</span>'}</td>
+ <td><button class="ghost mini" onclick="resetPass(${x.id},'${esc(x.email)}')">Nova senha</button></td></tr>`}).join('')||'<tr><td colspan="7" style="color:var(--mut)">Nenhum aluno neste filtro.</td></tr>'}
+ </tbody></table></div>
+ <p class="sub" style="margin-top:12px">O CSV traz só quem marcou o aceite de ofertas, já com o link de descadastro de cada pessoa. Use esse link no rodapé dos e-mails.</p>`}
+async function exportCsv(){try{const r=await call('/api/admin/leads.csv');const b=await r.blob();const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download='leads-timoneiro.csv';document.body.appendChild(a);a.click();a.remove()}catch(e){alert(e.message)}}
+async function resetPass(id,email){if(!confirm('Gerar uma senha temporária para '+email+'?'))return;try{const r=await fetch('/api/admin/students/'+id+'/reset-password',{method:'POST',headers:{Authorization:'Admin '+TOKEN}});const j=await r.json();if(!r.ok)throw new Error(j.error);prompt('Senha temporária. Envie ao aluno e peça para trocar em Carreira → Sua conta → Trocar senha:',j.senhaTemporaria)}catch(e){alert(e.message)}}
+TOKEN?load():login();
+</script>
+</body>
+</html>

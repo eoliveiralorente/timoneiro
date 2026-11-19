@@ -1,0 +1,21 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: timoneiro
+  namespace: timoneiro
+  annotations:
+    # Com cert-manager instalado, descomente para HTTPS automático:
+    # cert-manager.io/cluster-issuer: letsencrypt
+spec:
+  ingressClassName: traefik
+  rules:
+    - host: lab.seudominio.com.br
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service: {name: timoneiro, port: {number: 80}}
+  # tls:
+  #   - hosts: [lab.seudominio.com.br]
+  #     secretName: timoneiro-tls
