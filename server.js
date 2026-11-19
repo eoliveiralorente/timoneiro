@@ -16,6 +16,8 @@ const PUBLIC_URL = (process.env.PUBLIC_URL || '').replace(/\/$/, '');
 const CONFIG = {
   mentoriaUrl: process.env.MENTORIA_URL || '',
   lojaUrl: process.env.LOJA_URL || '',
+  ebookUrl: process.env.EBOOK_URL || '',
+  ebookTitle: process.env.EBOOK_TITLE || 'Do Zero ao DevOps com AIOps',
   contato: process.env.CONTATO_EMAIL || '',
 };
 // Versão e texto exatos dos consentimentos (guardados no log a cada aceite)
@@ -60,6 +62,13 @@ CREATE TABLE IF NOT EXISTS consent_log(
   at INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS ix_consent_user ON consent_log(user_id);
+CREATE TABLE IF NOT EXISTS events(
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  kind TEXT NOT NULL,
+  at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS ix_events_user ON events(user_id);
 `);
 { // migração: novas colunas sem perder dados
   const cols = db.prepare('PRAGMA table_info(users)').all().map((c) => c.name);
@@ -79,6 +88,8 @@ const q = {
   setProfile: db.prepare('UPDATE users SET phone=?, area=? WHERE id=?'),
   setPass: db.prepare('UPDATE users SET pass_hash=? WHERE id=?'),
   del: db.prepare('DELETE FROM users WHERE id=?'),
+  event: db.prepare('INSERT INTO events(user_id,kind,at) VALUES(?,?,?)'),
+  clicks: db.prepare('SELECT user_id, kind, COUNT(*) n, MAX(at) last FROM events GROUP BY user_id, kind'),
   log: db.prepare('INSERT INTO consent_log(user_id,kind,granted,text_version,text,ip,ua,at) VALUES(?,?,?,?,?,?,?,?)'),
   logsOf: db.prepare('SELECT kind,granted,text_version,text,ip,at FROM consent_log WHERE user_id=? ORDER BY at'),
   all: db.prepare('SELECT id,name,email,phone,area,whatsapp,created_at,last_seen,marketing,state,state_updated FROM users ORDER BY last_seen DESC'),
@@ -266,6 +277,12 @@ async function route(req, res) {
       if (typeof b.whatsapp === 'boolean') { const v = b.whatsapp ? 1 : 0; if (v && !u.phone) return fail(res, 400, 'Cadastre seu telefone antes de ativar o WhatsApp.'); if (v !== u.whatsapp) { q.setWa.run(v, u.id); q.log.run(u.id, 'whatsapp', v, TERMS_VERSION, WA_TEXT, ip, ua(req), Date.now()); } }
       return send(res, 200, { ok: true, user: publicUser(q.byId.get(u.id)) });
     }
+    if (m === 'POST' && p === '/api/me/event') {
+      const b = await readJson(req); const kind = String(b.kind || '');
+      if (!['ebook', 'loja', 'mentoria'].includes(kind)) return fail(res, 400, 'Evento inválido.');
+      if (limited(ip, 'evt', 120)) return send(res, 200, { ok: true });
+      q.event.run(u.id, kind, Date.now()); return send(res, 200, { ok: true });
+    }
     if (m === 'PUT' && p === '/api/me/profile') {
       const b = await readJson(req);
       const phone = normPhone(b.phone), area = normArea(b.area);
@@ -282,7 +299,7 @@ async function route(req, res) {
       q.setPass.run(hashPass(np), u.id); return send(res, 200, { ok: true, token: newToken(q.byId.get(u.id)) });
     }
     if (m === 'GET' && p === '/api/me/export') {
-      return send(res, 200, { exportadoEm: new Date().toISOString(), conta: publicUser(u), ultimoAcesso: u.last_seen, progresso: u.state ? JSON.parse(u.state) : null, consentimentos: q.logsOf.all(u.id) }, { 'Content-Disposition': 'attachment; filename="meus-dados-timoneiro.json"' });
+      return send(res, 200, { exportadoEm: new Date().toISOString(), conta: publicUser(u), ultimoAcesso: u.last_seen, progresso: u.state ? JSON.parse(u.state) : null, consentimentos: q.logsOf.all(u.id), cliques: db.prepare('SELECT kind, at FROM events WHERE user_id=? ORDER BY at').all(u.id) }, { 'Content-Disposition': 'attachment; filename="meus-dados-timoneiro.json"' });
     }
     if (m === 'DELETE' && p === '/api/me') {
       const b = await readJson(req);
@@ -297,7 +314,8 @@ async function route(req, res) {
     if (limited(ip, 'adm', 120)) return fail(res, 429, 'Muitas tentativas.');
     if (!isAdmin(req)) return fail(res, 401, 'Token de mentor inválido.');
     if (m === 'GET' && p === '/api/admin/students') {
-      const rows = q.all.all().map((u) => ({ id: u.id, nome: u.name, email: u.email, telefone: u.phone || '', area: u.area || '', criadoEm: u.created_at, ultimoAcesso: u.last_seen, aceitaMarketing: !!u.marketing, aceitaWhatsapp: !!(u.whatsapp && u.phone), ...summary(u.state) }));
+      const ck = {}; for (const c of q.clicks.all()) { (ck[c.user_id] = ck[c.user_id] || {})[c.kind] = { n: c.n, ultimo: c.last }; }
+      const rows = q.all.all().map((u) => ({ cliques: ck[u.id] || {}, id: u.id, nome: u.name, email: u.email, telefone: u.phone || '', area: u.area || '', criadoEm: u.created_at, ultimoAcesso: u.last_seen, aceitaMarketing: !!u.marketing, aceitaWhatsapp: !!(u.whatsapp && u.phone), ...summary(u.state) }));
       return send(res, 200, { total: rows.length, alunos: rows });
     }
     if (m === 'GET' && p === '/api/admin/leads.csv') {
